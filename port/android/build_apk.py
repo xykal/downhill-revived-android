@@ -11,8 +11,10 @@
    density), the two libraries (src/main/jniLibs/arm64-v8a) and the Gradle wrapper (SDL's
    gradle-wrapper.jar, Gradle WRAPPER_GRADLE: the version already in GRADLE_USER_HOME).
 3. gradlew assembleDebug (no daemon), signed with the debug key ANDROID_USER_HOME holds
-   (DHD_DEVCACHES\\AndroidUser\\debug.keystore, made on first use). Output:
-   build/android/downhill-revived-<version>-debug.apk.
+   (DHD_DEVCACHES\\AndroidUser\\debug.keystore, made on first use); --release runs
+   assembleRelease instead, signed with the DHD_KEYSTORE* environment's keystore when set
+   (CI's secrets), and the output name ends in -release.apk. Output:
+   build/android/downhill-revived-<version>-<debug|release>.apk.
 
 Needs: the Android SDK (ANDROID_HOME; platform android-35, build-tools), a JDK 17+ (JAVA_HOME),
 GRADLE_USER_HOME on F: (Gradle, the Android Gradle Plugin and its libraries are fetched there on
@@ -98,6 +100,10 @@ def main():
                     help="the APK's ABI (armeabi-v7a: 32-bit, OpenGL ES 3.0-capable devices)")
     ap.add_argument('--jobs', type=int, default=2)
     ap.add_argument('--offline', action='store_true', help="Gradle from GRADLE_USER_HOME's cache only")
+    ap.add_argument('--release', action='store_true',
+                    help="assembleRelease instead of assembleDebug; signed when the DHD_KEYSTORE, "
+                         "DHD_KEYSTORE_PASSWORD, DHD_KEY_ALIAS and DHD_KEY_PASSWORD environment "
+                         "variables name a keystore (CI has them as secrets), unsigned otherwise")
     ap.add_argument('--extra-lib', type=Path, action='append', default=[],
                     help='another .so to pack (e.g. libVkLayer_khronos_validation.so for DHD_WGPU_DEBUG)')
     a = ap.parse_args()
@@ -117,17 +123,30 @@ def main():
     project(libs + a.extra_lib, a.abi)
     name, code = version()
     gradlew = PROJECT / ('gradlew.bat' if os.name == 'nt' else 'gradlew')
+    signed = 'unsigned'
+    if a.release:
+        task, flavor = 'assembleRelease', 'release'
+        keystore = os.environ.get('DHD_KEYSTORE')
+        props = ['-P%s=%s' % (prop, os.environ[env_name])
+                 for env_name, prop in (('DHD_KEYSTORE', 'dhdKeystore'),
+                                        ('DHD_KEYSTORE_PASSWORD', 'dhdKeystorePassword'),
+                                        ('DHD_KEY_ALIAS', 'dhdKeyAlias'),
+                                        ('DHD_KEY_PASSWORD', 'dhdKeyPassword'))
+                 if os.environ.get(env_name)]
+        signed = 'release-signed' if keystore else 'unsigned'
+    else:
+        task, flavor, props = 'assembleDebug', 'debug', []
     cmd = [str(gradlew), '--no-daemon', '--console=plain', '-PdhdVersionName=' + name, '-PdhdVersionCode=%d' % code,
-           '-PdhdAbi=' + a.abi, 'assembleDebug'] + (['--offline'] if a.offline else [])
+           '-PdhdAbi=' + a.abi] + props + [task] + (['--offline'] if a.offline else [])
     print('build_apk: ' + ' '.join(cmd), flush=True)
     r = subprocess.run(cmd, cwd=str(PROJECT))
     if r.returncode:
         sys.exit('build_apk: Gradle failed (exit %d)' % r.returncode)
-    built = PROJECT / 'app' / 'build' / 'outputs' / 'apk' / 'debug' / 'app-debug.apk'
-    apk = OUT / ('downhill-revived-%s-%s-debug.apk' % (name, a.abi))
+    built = PROJECT / 'app' / 'build' / 'outputs' / 'apk' / flavor / ('app-%s.apk' % flavor)
+    apk = OUT / ('downhill-revived-%s-%s-%s.apk' % (name, a.abi, flavor))
     shutil.copyfile(built, apk)
-    print('PASS: %s (%.1f MB), app.downhillrevived %s (%d), %s, debug-signed' % (
-        apk, apk.stat().st_size / 1048576, name, code, a.abi), flush=True)
+    print('PASS: %s (%.1f MB), app.downhillrevived %s (%d), %s, %s' % (
+        apk, apk.stat().st_size / 1048576, name, code, a.abi, signed), flush=True)
 
 
 if __name__ == '__main__':

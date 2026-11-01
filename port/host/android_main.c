@@ -21,6 +21,7 @@
 #include <SDL3/SDL.h>
 #include <android/log.h>
 #include <jni.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +131,28 @@ done:
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 }
 
+/* ---- the crash report ---- */
+/* A force close is otherwise only in logcat: write the crash into dhd.log (stderr goes there,
+   and to logcat) with the signal and a backtrace — llvm-addr2line -e libmain.so turns the
+   frames into source lines — then let the default action end the process. Installed before the
+   game's fault guard (host_posix.c), which chains to it for faults that aren't its own. */
+extern void host_backtrace(void);
+
+static void crash_report(int sig)
+{
+    fprintf(stderr, "\n*** Downhill Revived crashed (signal %d) ***\n", sig);
+    host_backtrace();
+    fflush(NULL);
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static void install_crash_report(void)
+{
+    static const int sigs[] = {SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE};
+    for (size_t i = 0; i < sizeof sigs / sizeof sigs[0]; i++) signal(sigs[i], crash_report);
+}
+
 /* The disc image: what dhd.ini already names when it still reads and is the game — a picked
    content URI plays in place, a copy in the files folder as it always did — else the picker.
    iso_out gets what the game should be given (settings_start writes it to dhd.ini). 0 when
@@ -195,8 +218,19 @@ __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
     }
     snprintf(files, sizeof files, "%s/", storage);
     snprintf(exe, sizeof exe, "%sdhd64", files);
+    /* the log's copy in the external files folder, where a file manager can reach it
+       (Android/data/app.downhillrevived/files/dhd.log): set before the log opens */
+    {
+        const char *ext = SDL_GetAndroidExternalStoragePath();
+        static char mirror[1200];
+        if (ext) {
+            snprintf(mirror, sizeof mirror, "%s/dhd.log", ext);
+            setenv("DHD_LOG_MIRROR", mirror, 1);
+        }
+    }
     host_console_init();
     fprintf(stderr, "android: Downhill Revived in %s\n", files);
+    install_crash_report();  /* the log is open now; the game's fault guard chains to it */
     {   /* a profile-collecting build (build_host64.py --target android-arm64 --pgo-generate): its counters go to the
            files folder (host_exit writes them; the process ends with _exit, so no atexit runs) */
         extern void __llvm_profile_set_filename(const char *) __attribute__((weak));

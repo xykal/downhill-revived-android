@@ -128,10 +128,24 @@ jobs:
         run: |
           echo "DHD_ELF_URL secret unset: fixture link (no game module) only"
           python3 port/tools/build_host64.py --target android-armv7 --fake --wasi "$WASI_SDK" --jobs 4
-      - name: APK (armeabi-v7a, debug-signed)
-        run: python3 port/android/build_apk.py --abi armeabi-v7a
+      - name: Release keystore
+        env:
+          DHD_KEYSTORE_B64: ${{ secrets.DHD_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DHD_KEYSTORE_B64" ]; then
+            printf '%s' "$DHD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/downhill-revived.p12"
+            echo "DHD_KEYSTORE=$RUNNER_TEMP/downhill-revived.p12" >> "$GITHUB_ENV"
+          else
+            echo "DHD_KEYSTORE_B64 secret unset: the APK will be unsigned"
+          fi
+      - name: APK (armeabi-v7a, release-signed)
+        env:
+          DHD_KEYSTORE_PASSWORD: ${{ secrets.DHD_KEYSTORE_PASSWORD }}
+          DHD_KEY_ALIAS: ${{ secrets.DHD_KEY_ALIAS }}
+          DHD_KEY_PASSWORD: ${{ secrets.DHD_KEY_PASSWORD }}
+        run: python3 port/android/build_apk.py --abi armeabi-v7a --release
       - uses: actions/upload-artifact@v4
         with:
-          name: downhill-revived-armeabi-v7a-debug
+          name: downhill-revived-armeabi-v7a-release
           path: build/android/*armeabi-v7a*.apk
           if-no-files-found: error

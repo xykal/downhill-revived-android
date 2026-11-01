@@ -31,6 +31,18 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    signingConfigs {
+        // CI passes these from the DHD_KEYSTORE_* secrets (build_apk.py --release). Without
+        // them the release build is unsigned and build_apk.py says so.
+        release {
+            if (project.hasProperty('dhdKeystore')) {
+                storeFile = file(project.property('dhdKeystore'))
+                storePassword = project.property('dhdKeystorePassword')
+                keyAlias = project.property('dhdKeyAlias')
+                keyPassword = project.property('dhdKeyPassword')
+            }
+        }
+    }
     buildTypes {
         debug {
             debuggable = true
@@ -38,6 +50,7 @@ android {
         }
         release {
             minifyEnabled = false
+            signingConfig = project.hasProperty('dhdKeystore') ? signingConfigs.release : null
         }
     }
     packaging {

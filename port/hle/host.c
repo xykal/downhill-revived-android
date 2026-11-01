@@ -748,6 +748,8 @@ void host_init(void)
    file before the process ends (exit, host_exit), at most half a second. */
 static int log_pipe[2] = {-1, -1};
 static FILE *log_file;
+static FILE *log_mirror;  /* Android: the same lines in the app's external files folder, where
+                             the player can reach them from a file manager without adb */
 static atomic_int log_busy;  /* the thread is between a read and its last line written */
 
 static void log_line(char *line)
@@ -758,6 +760,11 @@ static void log_line(char *line)
     fputs(line, log_file);
     fputc('\n', log_file);
     fflush(log_file);
+    if (log_mirror) {
+        fputs(line, log_mirror);
+        fputc('\n', log_mirror);
+        fflush(log_mirror);
+    }
 }
 
 /* Only async-signal-safe calls besides fflush: host_exit also runs it after a fault. */
@@ -807,6 +814,13 @@ static void *log_copy(void *unused)
 static void log_start(const char *path)
 {
     if (!(log_file = host_os_fopen(path, "w"))) return;
+#ifdef __ANDROID__
+    {   /* the player's copy of the log (android_main.c sets it): the external files folder,
+           reachable from a file manager — Android/data/app.downhillrevived/files/dhd.log */
+        const char *mirror = getenv("DHD_LOG_MIRROR");
+        if (mirror) log_mirror = host_os_fopen(mirror, "a");
+    }
+#endif
     if (pipe(log_pipe) != 0) { log_pipe[0] = -1; return; }
     fflush(stdout), fflush(stderr);
     dup2(log_pipe[1], STDOUT_FILENO);

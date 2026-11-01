@@ -214,6 +214,12 @@ static int device_init(void)
     d.abi = DHDR_ABI_VERSION;
     const char *backend = getenv("DHD_WGPU_BACKEND"), *compiler = getenv("DHD_WGPU_COMPILER");
     const char *choice = getenv("DHD_WGPU_ADAPTER"), *dual = getenv("DHD_WGPU_DUAL_SOURCE");
+#if defined(__ANDROID__) && !defined(__aarch64__)
+    /* armeabi-v7a: the budget handsets this ABI exists for (MediaTek/PowerVR) often have a
+       broken or missing Vulkan, and nothing here sets DHD_WGPU_BACKEND — default to OpenGL ES,
+       which the APK's manifest already asks for on this ABI. Any environment value still wins. */
+    if (!backend) backend = "gl";
+#endif
     if (backend && !strcmp(backend, "vulkan")) d.flags |= DHDR_DEV_VULKAN;
     if (backend && !strcmp(backend, "gl")) d.flags |= DHDR_DEV_GL;   /* OpenGL ES: budget phones whose Vulkan is missing or broken (MediaTek/PowerVR) */
     if (getenv("DHD_WGPU_DEBUG")) d.flags |= DHDR_DEV_DEBUG | DHDR_DEV_VALIDATION;
