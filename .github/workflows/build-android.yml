@@ -42,6 +42,8 @@ jobs:
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Prime cargo registry (rustgs builds --locked --offline)
+        run: cargo fetch --locked
       - name: Fixture link (armeabi-v7a)
         run: python3 port/tools/build_host64.py --target android-armv7 --fake --wasi "$WASI_SDK" --jobs 4
       - name: Fiber selftest binary
@@ -96,6 +98,8 @@ jobs:
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Prime cargo registry (rustgs builds --locked --offline)
+        run: cargo fetch --locked
       - name: Game ELF (your own dump; BYOD)
         if: env.DHD_ELF_URL != ''
         run: |
