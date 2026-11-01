@@ -1169,9 +1169,10 @@ int host_disc_ready(void)
     if (iso && !problem) return 0;
 #ifdef __ANDROID__
     /* The copy android_main.c made passed its first look but not the game's data: say so and drop
-       the copy, so the next start asks for the disc again. */
+       the copy, so the next start asks for the disc again. A content URI (played in place) has
+       nothing to drop — keep it out of remove(). */
     static const char choose[] = "Start the game again to choose your Downhill Domination (USA) disc image (SCUS-97177).";
-    if (iso) remove(iso);
+    if (iso && strncmp(iso, "content://", 10) != 0) remove(iso);
 #else
     static const char choose[] = "Start the game from its launcher (DownhillRevived) and choose your Downhill "
                                  "Domination (USA) disc image (SCUS-97177) there.";

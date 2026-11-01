@@ -8,9 +8,10 @@
    - the app's files folder (internal storage, SDL_GetAndroidInternalStoragePath) stands for the
      folder of dhd.exe: host_exe_path names dhd64 there, so dhd.ini, saves, dhd.log and the disc
      image's copy live there;
-   - the disc image: SCUS-97177.iso in that folder. On the first start (or when the copy is not the
-     game) the player picks the .iso once through Android's document picker (SDL's file dialog) and
-     it is copied there (the content URI is read once; Android gives no path to it);
+   - the disc image: the .iso the player picks once through Android's document picker (SDL's
+     file dialog). It is played where it is through the content URI Android hands back (no copy:
+     the files folder and internal storage stay as they are); a copy into SCUS-97177.iso in that
+     folder only when the file can't be read in place;
    - a new dhd.ini names the copy (iso) and turns the updater off (an APK is updated by reinstalling
      it); the player defaults (the native renderer at 2x, widescreen, movies skipped) come from
      host.c as on Windows;
@@ -19,6 +20,7 @@
    SDL_main never returns to a second start in the same process. */
 #include <SDL3/SDL.h>
 #include <android/log.h>
+#include <jni.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,42 +92,98 @@ static int copy_disc(const char *uri, const char *path)
     return 0;
 }
 
-/* The copy of the disc image in the files folder, made on the first start; 0 if the player gave up. */
-static int disc_ready(const char *path)
+/* ---- keeping the pick across restarts ---- */
+/* SDL's document picker grants the read for this session only; keep it (Android allows that for
+   picked documents) so the next start doesn't have to choose the disc again. Best effort: when
+   the grant wasn't persistable the next start simply asks again. */
+static void keep_permission(const char *uri)
+{
+    JNIEnv *env = SDL_GetAndroidJNIEnv();  /* void* here: C converts it to JNIEnv* */
+    jobject activity = SDL_GetAndroidActivity();
+    jclass uri_cls, act_cls, cr_cls;
+    jmethodID parse, get_cr, take;
+    jstring juri;
+    jobject parsed, cr;
+    if (!env || !activity) return;
+    uri_cls = (*env)->FindClass(env, "android/net/Uri");
+    if (!uri_cls) goto done;
+    parse = (*env)->GetStaticMethodID(env, uri_cls, "parse", "(Ljava/lang/String;)Landroid/net/Uri;");
+    act_cls = (*env)->FindClass(env, "android/app/Activity");
+    if (!act_cls) goto done;
+    get_cr = (*env)->GetMethodID(env, act_cls, "getContentResolver", "()Landroid/content/ContentResolver;");
+    cr_cls = (*env)->FindClass(env, "android/content/ContentResolver");
+    if (!cr_cls) goto done;
+    take = (*env)->GetMethodID(env, cr_cls, "takePersistableUriPermission", "(Landroid/net/Uri;I)V");
+    if (!parse || !get_cr || !take) goto done;
+    juri = (*env)->NewStringUTF(env, uri);
+    parsed = juri ? (*env)->CallStaticObjectMethod(env, uri_cls, parse, juri) : NULL;
+    cr = parsed ? (*env)->CallObjectMethod(env, activity, get_cr) : NULL;
+    if (cr) {
+        (*env)->CallVoidMethod(env, cr, take, parsed, 1 /* FLAG_GRANT_READ_URI_PERMISSION */);
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            fprintf(stderr, "android: the disc's access can't be kept; the game will ask for it "
+                    "again after it restarts (%s)\n", uri);
+        }
+    }
+done:
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+}
+
+/* The disc image: what dhd.ini already names when it still reads and is the game — a picked
+   content URI plays in place, a copy in the files folder as it always did — else the picker.
+   iso_out gets what the game should be given (settings_start writes it to dhd.ini). 0 when
+   the player gave up. */
+static int disc_ready(char *iso_out, size_t iso_size)
 {
     struct stat st;
-    const char *problem = stat(path, &st) == 0 ? host_disc_check(path) : "none";
-    if (!problem) return 1;
-    if (strcmp(problem, "none")) unlink(path);  /* not the game: ask again */
+    char copy[1200], ini[1200], have[4096];
+    snprintf(copy, sizeof copy, "%s" DISC_NAME, files);
+    snprintf(ini, sizeof ini, "%sdhd.ini", files);
+    if (dhd_settings_read(ini, "iso", have, sizeof have) && have[0] && !host_disc_check(have)) {
+        snprintf(iso_out, iso_size, "%s", have);
+        return 1;
+    }
+    if (stat(copy, &st) == 0 && !host_disc_check(copy)) {  /* a copy from an older start */
+        snprintf(iso_out, iso_size, "%s", copy);
+        return 1;
+    }
     char message[1024];
-    snprintf(message, sizeof message, "%s%sChoose your Downhill Domination (USA) disc image: the game plays from "
-             "your own copy of the disc, an .iso file (SCUS-97177). It is copied into the app once (a few GB "
-             "of storage; this takes a minute or two with nothing on the screen).",
-             strcmp(problem, "none") ? problem : "", strcmp(problem, "none") ? "\n\n" : "");
+    snprintf(message, sizeof message, "Choose your Downhill Domination (USA) disc image: the game "
+             "plays from your own copy of the disc, an .iso file (SCUS-97177), read in place where "
+             "you keep it — no copy and no extra storage needed.");
     for (;;) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Downhill Revived", message, NULL);
         const char *uri = pick();
         if (!*uri) return 0;
         fprintf(stderr, "android: disc image chosen: %s\n", uri);
-        if (!copy_disc(uri, path)) {
-            snprintf(message, sizeof message, "The file couldn't be copied (is there room on the phone?).\n\n"
-                     "Choose your Downhill Domination (USA) disc image (SCUS-97177).");
-            continue;
+        const char *why = host_disc_check(uri);
+        if (!why) {
+            keep_permission(uri);  /* it stays chosen across restarts */
+            snprintf(iso_out, iso_size, "%s", uri);
+            return 1;
         }
-        if (!(problem = host_disc_check(path))) return 1;
-        unlink(path);
-        snprintf(message, sizeof message, "%s\n\nChoose your Downhill Domination (USA) disc image (SCUS-97177).", problem);
+        fprintf(stderr, "android: can't be read in place (%s); trying a copy\n", why);
+        if (copy_disc(uri, copy) && !(why = host_disc_check(copy))) {
+            snprintf(iso_out, iso_size, "%s", copy);
+            return 1;
+        }
+        snprintf(message, sizeof message, "%s%s\n\nThe file couldn't be read or copied (is there "
+                 "room on the phone?). Choose your Downhill Domination (USA) disc image "
+                 "(SCUS-97177) again.", why ? why : "", why ? "\n\n" : "");
     }
 }
 
-/* dhd.ini names the copy of the disc (host_disc_ready checks it in the core; DHD_ISO would skip
-   that check): a dhd.ini without a disc gets it (dhd_settings, which starts a missing file). The
-   player defaults apply as soon as dhd.ini exists (host_settings_load). */
+/* dhd.ini names the disc (the content URI picked in place, or the copy; host_disc_ready checks it
+   in the core; DHD_ISO would skip that check). A changed choice overwrites the old one — a new
+   pick, or a copy that replaced a URI that couldn't be read. The player defaults apply as soon as
+   dhd.ini exists (host_settings_load). */
 static void settings_start(const char *disc)
 {
-    char path[1200], iso[8];
+    char path[1200], cur[4096];
     snprintf(path, sizeof path, "%sdhd.ini", files);
-    if (!dhd_settings_read(path, "iso", iso, sizeof iso)) dhd_settings_save(path, "iso", disc);
+    if (!dhd_settings_read(path, "iso", cur, sizeof cur) || strcmp(cur, disc))
+        dhd_settings_save(path, "iso", disc);
 }
 
 __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
@@ -148,9 +206,8 @@ __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
     }
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
-    char disc[1200];
-    snprintf(disc, sizeof disc, "%s" DISC_NAME, files);
-    if (!disc_ready(disc)) {
+    char disc[4096];
+    if (!disc_ready(disc, sizeof disc)) {
         fprintf(stderr, "android: no disc image; the game ends\n");
         exit(0);
     }

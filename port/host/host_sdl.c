@@ -157,12 +157,17 @@ int host_thread_detach(void (*fn)(void *), void *arg)
    game thread, the texture pack's loaders): slots are taken and given back under slot_lock; a
    handle is then its owner's alone. */
 #define FILE_SLOTS 32
+/* A slot is a C library FILE, or — on Android — an SDL_IOStream for a content:// document the
+   player picked (android_main.c): Android gives no path to those, only the URI, which SDL reads
+   in place (SDL_iostream.h), so the disc image needs no copy into the app's storage. */
 static FILE *file_slot[FILE_SLOTS + 1];
+static SDL_IOStream *io_slot[FILE_SLOTS + 1];
 static SDL_SpinLock slot_lock;
 static char discard_file;  /* the slot's FILE for a discarding handle */
 #define DISCARD ((FILE *)&discard_file)
 
 static FILE *file_of(HostFile h) { return h > 0 && h <= FILE_SLOTS ? file_slot[h] : NULL; }
+static SDL_IOStream *io_of(HostFile h) { return h > 0 && h <= FILE_SLOTS ? io_slot[h] : NULL; }
 
 /* The game's own files (the memory card's saves\cardN folders, mc.c) are named with Windows
    backslashes: each path below has them turned into slashes, which every host takes. */
@@ -178,11 +183,18 @@ static const char *slashed(const char *path, char *buf, size_t size)
 
 HostFile host_file_open(const char *path, unsigned mode)
 {
-    FILE *f;
+    FILE *f = NULL;
+    SDL_IOStream *io = NULL;
     int slot;
     if ((mode & HOST_FILE_WRITE) && (mode & HOST_FILE_DISCARD)) f = DISCARD;
     else {
         SLASHED(path);
+        if (!strncmp(path, "content://", 10)) {
+            /* A picked Android document (android_main.c): no path, only the URI — read in place. */
+            if (mode & HOST_FILE_WRITE) return HOST_FILE_NONE;
+            io = SDL_IOFromFile(path, "rb");
+            if (!io) return HOST_FILE_NONE;
+        } else {
         const char *kind = !(mode & HOST_FILE_WRITE) ? "rb" : mode & HOST_FILE_TRUNCATE ? "w+b" : "r+b";
         f = host_os_fopen(path, kind);
         /* The module's WASI open shim has no preopened directories, so an absolute POSIX path
@@ -194,15 +206,17 @@ HostFile host_file_open(const char *path, unsigned mode)
             snprintf(rooted, sizeof rooted, "/%s", path);
             f = host_os_fopen(rooted, kind);
         }
+        if (!f) return HOST_FILE_NONE;
+        }
     }
-    if (!f) return HOST_FILE_NONE;
     SDL_LockSpinlock(&slot_lock);
-    for (slot = 1; slot <= FILE_SLOTS && file_slot[slot]; slot++)
+    for (slot = 1; slot <= FILE_SLOTS && (file_slot[slot] || io_slot[slot]); slot++)
         ;
-    if (slot <= FILE_SLOTS) file_slot[slot] = f;
+    if (slot <= FILE_SLOTS) { file_slot[slot] = f; io_slot[slot] = io; }
     SDL_UnlockSpinlock(&slot_lock);
     if (slot > FILE_SLOTS) {
-        if (f != DISCARD) fclose(f);
+        if (io) SDL_CloseIO(io);
+        else if (f != DISCARD && f) fclose(f);
         return HOST_FILE_NONE;
     }
     return slot;
@@ -210,17 +224,24 @@ HostFile host_file_open(const char *path, unsigned mode)
 
 void host_file_close(HostFile h)
 {
+    SDL_IOStream *io = io_of(h);
     FILE *f = file_of(h);
-    if (f) {
-        if (f != DISCARD) fclose(f);
-        SDL_LockSpinlock(&slot_lock);
-        file_slot[h] = NULL;
-        SDL_UnlockSpinlock(&slot_lock);
-    }
+    if (!io && !f) return;
+    if (io) SDL_CloseIO(io);
+    else if (f != DISCARD) fclose(f);
+    SDL_LockSpinlock(&slot_lock);
+    file_slot[h] = NULL;
+    io_slot[h] = NULL;
+    SDL_UnlockSpinlock(&slot_lock);
 }
 
 int64_t host_file_read(HostFile h, void *dst, size_t size)
 {
+    SDL_IOStream *io = io_of(h);
+    if (io) {
+        size_t n = SDL_ReadIO(io, dst, size);
+        return n < size && SDL_GetIOStatus(io) == SDL_IO_STATUS_ERROR ? -1 : (int64_t)n;
+    }
     FILE *f = file_of(h);
     size_t n;
     if (!f) return -1;
@@ -236,24 +257,44 @@ int64_t host_file_read(HostFile h, void *dst, size_t size)
 
 size_t host_file_write(HostFile h, const void *src, size_t size)
 {
-    FILE *f = file_of(h);
+    SDL_IOStream *io = io_of(h);
+    FILE *f;
+    if (io) return 0;  /* a picked document is read only */
+    f = file_of(h);
     return !f ? 0 : f == DISCARD ? size : fwrite(src, 1, size, f);
 }
 
 int host_file_flush(HostFile h)
 {
-    FILE *f = file_of(h);
+    SDL_IOStream *io = io_of(h);
+    FILE *f;
+    if (io) return 0;
+    f = file_of(h);
     return !f ? -1 : f == DISCARD ? 0 : fflush(f);
 }
 
 int host_file_seek(HostFile h, uint64_t offset)
 {
-    FILE *f = file_of(h);
+    SDL_IOStream *io = io_of(h);
+    FILE *f;
+    if (io) return SDL_SeekIO(io, (Sint64)offset, SDL_IO_SEEK_SET) == (Sint64)offset ? 0 : -1;
+    f = file_of(h);
     return !f ? -1 : f == DISCARD ? 0 : host_fseek(f, (int64_t)offset, SEEK_SET);
 }
 
 uint64_t host_file_size(HostFile h)
 {
+    SDL_IOStream *io = io_of(h);
+    if (io) {
+        Sint64 size = SDL_GetIOSize(io);
+        Sint64 here, end;
+        if (size >= 0) return (uint64_t)size;
+        here = SDL_SeekIO(io, 0, SDL_IO_SEEK_CUR);
+        end = SDL_SeekIO(io, 0, SDL_IO_SEEK_END);
+        if (here < 0 || end < 0) return 0;
+        SDL_SeekIO(io, here, SDL_IO_SEEK_SET);
+        return (uint64_t)end;
+    }
     FILE *f = file_of(h);
     int64_t here, end;
     if (!f || f == DISCARD || (here = host_ftell(f)) < 0) return 0;
