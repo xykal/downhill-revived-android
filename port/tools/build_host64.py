@@ -67,16 +67,23 @@ SOURCE = ROOT / 'port/host64'
 
 
 class Target:
-    def __init__(self, key, rust, out, exe, fiber, jobs=8, outputs=1, flags=(), wabt=WABT, simde=None):
+    def __init__(self, key, rust, out, exe, fiber, jobs=8, outputs=1, flags=(), wabt=WABT, simde=None,
+                 page_size=4096):
         self.key, self.rust, self.out, self.exe, self.jobs, self.outputs = key, rust, out, exe, jobs, outputs
         self.fiber = fiber  # the fiber switch's adapter, port/host64/fiber_<fiber>.c (the CPU and its ABI)
         self.flags, self.wabt, self.simde = list(flags), Path(os.environ.get('WABT_DIR') or wabt), simde
-        self.windows, self.android, self.mac = key == 'win-x64', key == 'android-arm64', key == 'macos-arm64'
+        self.windows, self.android, self.mac = key == 'win-x64', key.startswith('android-'), key == 'macos-arm64'
         self.posix = not self.windows
+        self.bits32 = key == 'android-armv7'   # a 32-bit host: software bounds checks, no guard pages
+        self.page_size = page_size            # the link's -z max-page-size (16 KiB phones are arm64-only)
 
 
 MAC_MIN = '11.0'  # the first macOS on Apple silicon (package_release.py's LSMinimumSystemVersion)
-ANDROID_API = 30  # sdl3.ANDROID_API: Android 11
+ANDROID_API = 30  # sdl3.ANDROID_API: Android 11 (memfd_create)
+# armeabi-v7a: API 26 keeps the older MediaTek handsets (Android 8+) in range; pthread_getname_np
+# (host.c's crash reporter) needs 26, memfd_create (why arm64 is 30) goes through the syscall on
+# this target (guest_memory_posix.c).
+ANDROID_API_ARMV7 = 26
 TARGETS = {t.key: t for t in (
     Target('win-x64', 'x86_64-pc-windows-msvc', 'build/host64-exe', 'dhd64.exe', 'win64'),
     Target('linux-x64', 'x86_64-unknown-linux-gnu', 'build/host64-linux', 'dhd64', 'sysv64',
@@ -89,7 +96,13 @@ TARGETS = {t.key: t for t in (
     # Cortex-X1 and A78s (finding 091)
     Target('android-arm64', 'aarch64-linux-android', 'build/android', 'libmain.so', 'arm64', jobs=2, outputs=8,
            flags=['--target=aarch64-linux-android%d' % ANDROID_API, '-march=armv8.2-a', '-mtune=cortex-a78',
-                  '-fPIC', '-fomit-frame-pointer']),
+                  '-fPIC', '-fomit-frame-pointer'], page_size=16384),
+    # 32-bit Android (MediaTek and other budget SoCs): armv7-a with mandatory NEON, tuned for the
+    # Cortex-A53/A55-class cores these ship. Guard pages cannot work on a 32-bit address space, so
+    # the wasm2c units get WABT's software bounds checks (see guest_memory.c) and the 2 GiB span.
+    Target('android-armv7', 'armv7-linux-androideabi', 'build/android', 'libmain.so', 'arm32', jobs=2, outputs=8,
+           flags=['--target=armv7a-linux-androideabi%d' % ANDROID_API_ARMV7, '-march=armv7-a', '-mfpu=neon',
+                  '-mfloat-abi=softfp', '-mtune=cortex-a53', '-fPIC', '-fomit-frame-pointer']),
 )}
 # Off Windows: the POSIX host instead of the Win32 one
 POSIX_UNITS = {'port/host/host_win32.c': 'port/host/host_posix.c'}
@@ -176,7 +189,9 @@ def sdl(t, a):
     """(SDL3's library, its include directory, the libraries it needs at link time)."""
     import sdl3
     if t.android:
-        lib, include, _java = sdl3.android_build()
+        abi = 'armeabi-v7a' if t.bits32 else 'arm64-v8a'
+        api = ANDROID_API_ARMV7 if t.bits32 else ANDROID_API
+        lib, include, _java = sdl3.android_build(abi, api)
         return lib, include, []
     if a.sdl_lib and not a.sdl_include:
         raise ValueError('--sdl-lib needs --sdl-include')
@@ -233,8 +248,8 @@ def main():
         a.module = [default]
     if not a.fiber_test and bool(a.module) == a.fake:
         p.error('provide --fake or one .wasm / a set of wasm2c .c files')
-    if a.fake and not t.windows:
-        p.error('--fake builds the win-x64 fixture')
+    if a.fake and not (t.windows or t.android):
+        p.error('--fake builds the win-x64 fixture, or links the android targets (compile check)')
     if t.windows and (a.pgo_generate or a.pgo_use):
         p.error('--pgo-* are for the clang targets')
     jobs, outputs = a.jobs or t.jobs, a.num_outputs or t.outputs
@@ -261,8 +276,10 @@ def main():
     if t.android:
         import sdl3
         ndk = sdl3.android_ndk()
-        tools = ndk / 'toolchains/llvm/prebuilt/windows-x86_64/bin'
-        cc, ar = tools / 'clang.exe', tools / 'llvm-ar.exe'
+        prebuilt = ('windows-x86_64' if os.name == 'nt' else
+                    'darwin-x86_64' if sys.platform == 'darwin' else 'linux-x86_64')
+        tools = ndk / 'toolchains/llvm/prebuilt' / prebuilt / 'bin'
+        cc, ar = tools / ('clang.exe' if os.name == 'nt' else 'clang'), tools / ('llvm-ar.exe' if os.name == 'nt' else 'llvm-ar')
         if not cc.exists():
             p.error('no NDK clang at %s' % cc)
     elif t.posix:
@@ -275,7 +292,8 @@ def main():
         report = rust_library(t, work)
         if a.fake:
             wasm = work / 'fake.wasm'
-            run([a.wasi/'bin/clang.exe', '-O2', '-nostdlib', '-ffp-contract=off',
+            wasi_cc = a.wasi / 'bin' / ('clang.exe' if os.name == 'nt' else 'clang')
+            run([wasi_cc, '-O2', '-nostdlib', '-ffp-contract=off',
                  '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--export-table',
                  '-Wl,--export-memory', '-Wl,--export=__stack_pointer',
                  '-Wl,--initial-memory=2147483648', '-Wl,--max-memory=2147483648',
@@ -321,9 +339,12 @@ def main():
         # committed, so an out-of-bounds access faults and its reporter (guest_memory_*.c) names the
         # guest address and ends the process, as the trap did. WABT's own fault-to-trap handler stays
         # off (WASM_RT_SKIP_SIGNAL_RECOVERY): ours handle faults. Traps can come from any EE fiber:
-        # report and end (launcher.c).
-        defines = ['-DWASM_RT_STACK_DEPTH_COUNT=1', '-DWASM_RT_MAX_CALL_STACK_DEPTH=512', '-DWASM_RT_THREAD_LOCAL=',
-                   '-DWASM_RT_MEMCHECK_GUARD_PAGES=1', '-DWASM_RT_SKIP_SIGNAL_RECOVERY=1']
+        # report and end (launcher.c). A 32-bit target (android-armv7) has no room for the span and
+        # wrapping pointer arithmetic defeats the fault route: WABT's software bounds checks instead,
+        # whose traps reach the same host64_trap.
+        defines = ['-DWASM_RT_STACK_DEPTH_COUNT=1', '-DWASM_RT_MAX_CALL_STACK_DEPTH=512', '-DWASM_RT_THREAD_LOCAL=']
+        if not t.bits32:
+            defines += ['-DWASM_RT_MEMCHECK_GUARD_PAGES=1', '-DWASM_RT_SKIP_SIGNAL_RECOVERY=1']
         defines += ['-DHOST64_FAKE_MODULE=1'] if a.fake else ['-DWASM_RT_TRAP_HANDLER=host64_trap']
         includes = ['-I'+str(work), '-I'+str(wabt/'include'), '-I'+str(rt), '-I'+str(SOURCE),
                     '-I'+str(ROOT/'port/runtime'), '-I'+str(ROOT/'port/include'), '-I'+str(ROOT/'port/host'),
@@ -362,12 +383,15 @@ def main():
                       *prefix_maps] + (['-gline-tables-only'] if a.debug else [])
         objdir = work/'obj'
         suffix = '.obj' if t.windows else '.o'
+        have_vutext = Path(os.environ.get('DHD_VUTEXT') or ROOT / 'assets' / 'vutext.bin').exists()
 
         def compile_one(source, timeout=1800):
             source = Path(source)
             rel = source.relative_to(ROOT).as_posix() if source.is_relative_to(ROOT) else source.name
             extra = ['-I'+str(Path(sdl_include).resolve())] if rel.startswith('port/') else []  # threads, locks, timers
-            if rel.endswith('vu0_interp.c'):
+            if rel.endswith('vu0_interp.c') and have_vutext:
+                # The VU1 AOT tables and native kernels, from the game's .vutext (vu1_aot.generate
+                # below); without the dump only the --fake fixture builds, VU1 on the interpreter.
                 extra += ['-DPS2_VU_AOT']
             if rel.endswith('gs/gpu_rust.c'):
                 extra += ['-I'+str(ROOT/'port/render/include')]  # dhd_render.h
@@ -382,9 +406,14 @@ def main():
                              roots=[(work, 'out')], cwd=work, env=env, hit='')
             return obj
         # VU1's straight-line blocks as C (vu1_aot.inc and vu1_native_clip.inc, from the game's
-        # .vutext: DHD_VUTEXT or assets/vutext.bin); vu0_interp.c runs them
-        import vu1_aot
-        vu1_aot.generate(work/'vu1_aot.inc')
+        # .vutext: DHD_VUTEXT or assets/vutext.bin); vu0_interp.c runs them. The --fake fixture
+        # can link without them (VU1 on the interpreter); every real build must have the dump.
+        if have_vutext:
+            import vu1_aot
+            vu1_aot.generate(work/'vu1_aot.inc')
+        elif not a.fake:
+            raise ValueError('no .vutext (DHD_VUTEXT or assets/vutext.bin from your own disc dump; '
+                             'docs/BUILDING.md)')
         # the window's icon where the program carries none of its own (present.c's window_icon)
         icon = (ROOT/'port/res/icon.png').read_bytes()
         (work/'dhd_icon.inc').write_text('static const unsigned char dhd_icon_png[] = {%s};\n' % ','.join(map(str, icon)))
@@ -433,7 +462,8 @@ def main():
         elif t.android:
             exports_map = work/'exports.map'
             exports_map.write_text(ANDROID_EXPORTS)
-            lib_dir = out/'lib'/'arm64-v8a'
+            abi = 'armeabi-v7a' if t.bits32 else 'arm64-v8a'
+            lib_dir = out/'lib'/abi
             lib_dir.mkdir(parents=True, exist_ok=True)
             debug = out/'libmain.debug.so'
             rsp = work/'link.rsp'
@@ -442,11 +472,12 @@ def main():
             run([cc, t.flags[0], '-shared', *pgo_flags[:1], '-o', debug, '@'+str(rsp),
                  '-Wl,-soname,libmain.so', '-Wl,--version-script='+str(exports_map),
                  '-Wl,--gc-sections', '-Wl,--no-undefined', '-Wl,--build-id=sha1',
-                 '-Wl,-z,max-page-size=16384', '-Wl,-z,noexecstack', '-Wl,-z,relro', '-Wl,-z,now',
+                 '-Wl,-z,max-page-size=%d' % t.page_size, '-Wl,-z,noexecstack', '-Wl,-z,relro', '-Wl,-z,now',
                  '-landroid', *rust_libs, '-lm'], timeout=1800)
             exe = lib_dir/t.exe
-            run([tools/'llvm-strip.exe', '--strip-unneeded', '-o', exe, debug])
-            run([tools/'llvm-strip.exe', '--strip-unneeded', '-o', lib_dir/'libSDL3.so', sdl_lib])
+            strip = tools / ('llvm-strip.exe' if os.name == 'nt' else 'llvm-strip')
+            run([strip, '--strip-unneeded', '-o', exe, debug])
+            run([strip, '--strip-unneeded', '-o', lib_dir/'libSDL3.so', sdl_lib])
         elif t.mac:
             # ld64: -dead_strip as --gc-sections; no -rdynamic (exporting every symbol keeps the
             # module-side code of fps.c alive, which names guest data the host does not have); -S: no

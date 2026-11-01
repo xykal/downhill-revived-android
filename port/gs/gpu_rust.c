@@ -215,6 +215,7 @@ static int device_init(void)
     const char *backend = getenv("DHD_WGPU_BACKEND"), *compiler = getenv("DHD_WGPU_COMPILER");
     const char *choice = getenv("DHD_WGPU_ADAPTER"), *dual = getenv("DHD_WGPU_DUAL_SOURCE");
     if (backend && !strcmp(backend, "vulkan")) d.flags |= DHDR_DEV_VULKAN;
+    if (backend && !strcmp(backend, "gl")) d.flags |= DHDR_DEV_GL;   /* OpenGL ES: budget phones whose Vulkan is missing or broken (MediaTek/PowerVR) */
     if (getenv("DHD_WGPU_DEBUG")) d.flags |= DHDR_DEV_DEBUG | DHDR_DEV_VALIDATION;
     if (dual && !atoi(dual)) d.flags |= DHDR_DEV_NO_DUAL_SOURCE;
     d.log_level = getenv("DHD_WGPU_DEBUG") ? DHDR_LOG_WARN : DHDR_LOG_ERROR;

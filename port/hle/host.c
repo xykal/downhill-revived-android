@@ -58,8 +58,9 @@
 #define CTX_IP(c) ((uintptr_t)(c)->Rip)
 #define CTX_SP(c) ((uintptr_t)(c)->Rsp)
 #else
-/* POSIX crash/dump signals hand a ucontext_t: x86_64, or aarch64 (Android, finding 091; macOS,
-   whose registers sit behind a pointer, with fp and lr right after x0-x28). CTX_X: x0 up. */
+/* POSIX crash/dump signals hand a ucontext_t: x86_64, aarch64 (Android, finding 091; macOS,
+   whose registers sit behind a pointer, with fp and lr right after x0-x28), or arm32 (Android
+   armeabi-v7a; bionic's mcontext_t names the registers arm_*). CTX_X: x0/r0 up. */
 #if defined(__APPLE__)
 #define CTX_IP(c) ((uintptr_t)(c)->uc_mcontext->__ss.__pc)
 #define CTX_SP(c) ((uintptr_t)(c)->uc_mcontext->__ss.__sp)
@@ -68,6 +69,9 @@
 #define CTX_IP(c) ((uintptr_t)(c)->uc_mcontext.pc)
 #define CTX_SP(c) ((uintptr_t)(c)->uc_mcontext.sp)
 #define CTX_X(c) ((const unsigned long long *)(c)->uc_mcontext.regs)
+#elif defined(__arm__)
+#define CTX_IP(c) ((uintptr_t)(c)->uc_mcontext.arm_pc)
+#define CTX_SP(c) ((uintptr_t)(c)->uc_mcontext.arm_sp)
 #else
 #define CTX_IP(c) ((uintptr_t)(c)->uc_mcontext.gregs[REG_RIP])
 #define CTX_SP(c) ((uintptr_t)(c)->uc_mcontext.gregs[REG_RSP])
@@ -183,6 +187,12 @@ static void print_snapshot(const Snapshot *s)
     fprintf(stderr, "  pc %016llX sp %016llX lr %016llX x0 %016llX x1 %016llX x2 %016llX x19 %016llX x29 %016llX\n",
             (unsigned long long)CTX_IP(c), (unsigned long long)CTX_SP(c), x[30], x[0], x[1], x[2],
             x[19], x[29]);
+#elif defined(__arm__)
+    fprintf(stderr, "  pc %08lX sp %08lX lr %08lX r0 %08lX r1 %08lX r2 %08lX r11 %08lX\n",
+            (unsigned long)CTX_IP(c), (unsigned long)CTX_SP(c),
+            (unsigned long)c->uc_mcontext.arm_lr, (unsigned long)c->uc_mcontext.arm_r0,
+            (unsigned long)c->uc_mcontext.arm_r1, (unsigned long)c->uc_mcontext.arm_r2,
+            (unsigned long)c->uc_mcontext.arm_fp);
 #else
     const greg_t *r = c->uc_mcontext.gregs;
     fprintf(stderr, "  rip %016llX rax %016llX rbx %016llX rcx %016llX rdx %016llX rsi %016llX rdi %016llX rsp %016llX\n",

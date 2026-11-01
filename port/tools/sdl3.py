@@ -231,7 +231,7 @@ def posix_build():
 
 
 ANDROID_API = 30  # Android 11 (memfd_create, the Mi 11i's first release); build_host64.py's android-arm64 target too
-ANDROID_DIRNAME = '%s-android-arm64' % VERSION  # build/port/sdl3/<version>-android-arm64
+ANDROID_API_ARMV7 = 26  # Android 8: the floor for 32-bit MediaTek handsets (pthread_getname_np; memfd via syscall)
 
 
 def android_ndk():
@@ -251,15 +251,18 @@ def android_ndk():
     return ndk
 
 
-def android_build():
-    """libSDL3.so for Android arm64-v8a (API ANDROID_API), its include directory and the Java
-    sources of the same release (android-project/app/src/main/java: SDLActivity and friends, which
-    build_apk.py puts in the APK). Same subsystem selection as OPTIONS (window, audio, controllers),
-    plus SDL's file dialog (the disc image is chosen through Android's document picker). A shared
-    library, as SDL's Java side loads it (System.loadLibrary("SDL3")); its own libc++ is static.
+def android_build(abi='arm64-v8a', api=None):
+    """libSDL3.so for Android (abi: arm64-v8a or armeabi-v7a; api defaults per ABI: ANDROID_API for
+    arm64, ANDROID_API_ARMV7 for armv7), its include directory and the Java sources of the same
+    release (android-project/app/src/main/java: SDLActivity and friends, which build_apk.py puts in
+    the APK). Same subsystem selection as OPTIONS (window, audio, controllers), plus SDL's file
+    dialog (the disc image is chosen through Android's document picker). A shared library, as SDL's
+    Java side loads it (System.loadLibrary("SDL3")); its own libc++ is static.
     Built with the NDK's CMake toolchain file, CMake and Ninja, under
-    build/port/sdl3/<version>-android-arm64."""
-    base = OUT / ANDROID_DIRNAME
+    build/port/sdl3/<version>-android-<abi>."""
+    if api is None:
+        api = ANDROID_API_ARMV7 if abi == 'armeabi-v7a' else ANDROID_API
+    base = OUT / ('%s-android-%s' % (VERSION, abi))
     src = base / 'src' / ('SDL3-%s' % VERSION)
     lib = base / 'build' / 'libSDL3.so'
     include = src / 'include'
@@ -268,7 +271,7 @@ def android_build():
     ndk = android_ndk()
     options = {k: v for k, v in OPTIONS.items() if k not in ('HAVE_DINPUT_H', 'HAVE_GAMEINPUT_H')}
     options.update(SDL_SHARED='ON', SDL_STATIC='OFF', SDL_DIALOG='ON')
-    recipe = repr(sorted(options.items())) + 'android-arm64-%d %s' % (ANDROID_API, ndk.name)
+    recipe = repr(sorted(options.items())) + 'android-%s-%d %s' % (abi, api, ndk.name)
     if lib.exists() and stamp.exists() and stamp.read_text() == recipe:
         return lib, include, java
     tarball = fetch()
@@ -285,7 +288,7 @@ def android_build():
     cmd = [cmake, '-S', str(src), '-B', str(bld), '-G', 'Ninja',
            '-DCMAKE_MAKE_PROGRAM=' + os.path.join(ninja.BIN_DIR, 'ninja.exe' if os.name == 'nt' else 'ninja'),
            '-DCMAKE_TOOLCHAIN_FILE=' + str(ndk / 'build' / 'cmake' / 'android.toolchain.cmake'),
-           '-DANDROID_ABI=arm64-v8a', '-DANDROID_PLATFORM=android-%d' % ANDROID_API,
+           '-DANDROID_ABI=%s' % abi, '-DANDROID_PLATFORM=android-%d' % api,
            '-DANDROID_STL=c++_static', '-DCMAKE_BUILD_TYPE=Release']
     cmd += ['-D%s=%s' % kv for kv in sorted(options.items())]
     for step in (cmd, [cmake, '--build', str(bld), '-j', '2']):

@@ -16,6 +16,14 @@ static inline void fp_set_control(unsigned v) { if (v != fp_control()) __asm__ v
 /* IEEE: nearest (RMode 0), no flush to zero (FZ, FZ16), no default NaN, no AH/FIZ/NEP, no traps */
 #define FP_IEEE(c) ((c) & ~((3u << 22) | (1u << 24) | (1u << 25) | (1u << 19) | 0x9F07u))
 #define cpu_pause() __asm__ volatile("isb" ::: "memory")
+#elif defined(__arm__)
+/* armeabi-v7a (armv7a + NEON): FPSCR's RMode/FZ sit where FPCR's do; the same spin and IEEE
+   reasoning as the aarch64 branch above (finding 091 AND2). FPSCR bit 19 is reserved, not FZ16,
+   and stays untouched. */
+static inline unsigned fp_control(void) { unsigned v; __asm__ volatile("vmrs %0, fpscr" : "=r"(v)); return v; }
+static inline void fp_set_control(unsigned v) { if (v != fp_control()) __asm__ volatile("vmsr fpscr, %0" :: "r"(v) : "memory"); }
+#define FP_IEEE(c) ((c) & ~((3u << 22) | (1u << 24) | (1u << 25) | 0x9F07u))
+#define cpu_pause() __asm__ volatile("isb" ::: "memory")
 #else
 #include <xmmintrin.h>
 #define fp_control() _mm_getcsr()

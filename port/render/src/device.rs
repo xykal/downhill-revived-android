@@ -113,10 +113,14 @@ pub fn instance_flags(o: &DeviceOptions) -> wgpu::InstanceFlags {
 }
 
 /// The platform's backend: on Windows DX12, or Vulkan for `DHDR_DEV_VULKAN`; Metal on Apple
-/// platforms; Vulkan everywhere else (Linux, Android), whatever the flags say.
+/// platforms; OpenGL ES for `DHDR_DEV_GL` (budget MediaTek/PowerVR phones whose Vulkan is missing
+/// or broken: `DHD_WGPU_BACKEND=gl`); Vulkan everywhere else (Linux, Android), whatever the flags
+/// say.
 pub fn backends(o: &DeviceOptions) -> wgpu::Backends {
     if cfg!(target_vendor = "apple") {
         wgpu::Backends::METAL
+    } else if o.flags & DHDR_DEV_GL != 0 {
+        wgpu::Backends::GL
     } else if cfg!(windows) && o.flags & DHDR_DEV_VULKAN == 0 {
         wgpu::Backends::DX12
     } else {

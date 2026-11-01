@@ -26,6 +26,7 @@ pub const DHDR_DEV_DEBUG: u32 = 4;
 pub const DHDR_DEV_VALIDATION: u32 = 8;
 pub const DHDR_DEV_FALLBACK: u32 = 16;
 pub const DHDR_DEV_NO_DUAL_SOURCE: u32 = 32;
+pub const DHDR_DEV_GL: u32 = 64;
 
 pub const DHDR_LOG_ERROR: u32 = 1;
 pub const DHDR_LOG_WARN: u32 = 2;

@@ -9,8 +9,9 @@
 #include <stdlib.h>
 
 #include "ps2asm.h"
-#if !defined(DHD_VIF0_ONLY) && defined(__aarch64__)
-/* The Android build (finding 091): SIMDe maps the WL=1 unpack's SSE2 integer calls to NEON. */
+#if !defined(DHD_VIF0_ONLY) && (defined(__aarch64__) || defined(__arm__))
+/* The Android build (finding 091): SIMDe maps the WL=1 unpack's SSE2 integer calls to NEON —
+   on arm64 and on armeabi-v7a (NEON is mandatory there). */
 #define SIMDE_ENABLE_NATIVE_ALIASES
 #include <simde/x86/sse2.h>
 #elif !defined(DHD_VIF0_ONLY)

@@ -60,7 +60,7 @@ def icons(res):
         image.resize((size, size), Image.LANCZOS).save(res / ('mipmap-' + density) / 'ic_launcher.png')
 
 
-def project(libs):
+def project(libs, abi):
     if PROJECT.exists():
         shutil.rmtree(PROJECT)
     for rel in TEMPLATE:
@@ -70,10 +70,10 @@ def project(libs):
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
-    _lib, _include, java = sdl3.android_build()
+    _lib, _include, java = sdl3.android_build(abi)
     shutil.copytree(Path(java) / 'org', PROJECT / 'app' / 'src' / 'main' / 'java' / 'org')
     icons(PROJECT / 'app' / 'src' / 'main' / 'res')
-    jni = PROJECT / 'app' / 'src' / 'main' / 'jniLibs' / 'arm64-v8a'
+    jni = PROJECT / 'app' / 'src' / 'main' / 'jniLibs' / abi
     jni.mkdir(parents=True)
     for lib in libs:
         shutil.copyfile(lib, jni / lib.name)
@@ -81,6 +81,8 @@ def project(libs):
     for rel in ('gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar'):
         (PROJECT / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(template / rel, PROJECT / rel)
+    if os.name != 'nt':  # shutil.copyfile keeps no mode: gradlew must stay executable
+        (PROJECT / 'gradlew').chmod(0o755)
     (PROJECT / 'gradle' / 'wrapper' / 'gradle-wrapper.properties').write_text(
         'distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\n'
         'distributionUrl=https\\://services.gradle.org/distributions/gradle-%s-all.zip\n'
@@ -92,36 +94,40 @@ def project(libs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--wasm', type=Path, help='rebuild the libraries from this module first')
+    ap.add_argument('--abi', default='arm64-v8a', choices=('arm64-v8a', 'armeabi-v7a'),
+                    help="the APK's ABI (armeabi-v7a: 32-bit, OpenGL ES 3.0-capable devices)")
     ap.add_argument('--jobs', type=int, default=2)
     ap.add_argument('--offline', action='store_true', help="Gradle from GRADLE_USER_HOME's cache only")
     ap.add_argument('--extra-lib', type=Path, action='append', default=[],
-                    help='another arm64 .so to pack (e.g. libVkLayer_khronos_validation.so for DHD_WGPU_DEBUG)')
+                    help='another .so to pack (e.g. libVkLayer_khronos_validation.so for DHD_WGPU_DEBUG)')
     a = ap.parse_args()
     for var in ('GRADLE_USER_HOME', 'ANDROID_USER_HOME'):
         value = os.environ.get(var, '')
         if not value or os.path.splitdrive(os.path.abspath(value))[0].upper() == 'C:':
             sys.exit('build_apk: %s must be set, off C: (%r)' % (var, value))
-    libs = [OUT / 'lib' / 'arm64-v8a' / n for n in ('libmain.so', 'libSDL3.so')]
+    libs = [OUT / 'lib' / a.abi / n for n in ('libmain.so', 'libSDL3.so')]
     wasm = a.wasm or (ROOT / 'build' / 'wasm' / 'dhd_core.wasm')
     if a.wasm or not all(p.exists() for p in libs):
-        r = subprocess.run([sys.executable, str(ROOT / 'port' / 'tools' / 'build_host64.py'), '--target', 'android-arm64',
+        r = subprocess.run([sys.executable, str(ROOT / 'port' / 'tools' / 'build_host64.py'), '--target',
+                            'android-armv7' if a.abi == 'armeabi-v7a' else 'android-arm64',
                             str(wasm), '--jobs', str(a.jobs)])
         if r.returncode:
-            sys.exit('build_apk: build_host64.py --target android-arm64 failed')
-    project(libs + a.extra_lib)
+            sys.exit('build_apk: build_host64.py --target android-%s failed'
+                     % ('armv7' if a.abi == 'armeabi-v7a' else 'arm64'))
+    project(libs + a.extra_lib, a.abi)
     name, code = version()
     gradlew = PROJECT / ('gradlew.bat' if os.name == 'nt' else 'gradlew')
     cmd = [str(gradlew), '--no-daemon', '--console=plain', '-PdhdVersionName=' + name, '-PdhdVersionCode=%d' % code,
-           'assembleDebug'] + (['--offline'] if a.offline else [])
+           '-PdhdAbi=' + a.abi, 'assembleDebug'] + (['--offline'] if a.offline else [])
     print('build_apk: ' + ' '.join(cmd), flush=True)
     r = subprocess.run(cmd, cwd=str(PROJECT))
     if r.returncode:
         sys.exit('build_apk: Gradle failed (exit %d)' % r.returncode)
     built = PROJECT / 'app' / 'build' / 'outputs' / 'apk' / 'debug' / 'app-debug.apk'
-    apk = OUT / ('downhill-revived-%s-debug.apk' % name)
+    apk = OUT / ('downhill-revived-%s-%s-debug.apk' % (name, a.abi))
     shutil.copyfile(built, apk)
-    print('PASS: %s (%.1f MB), app.downhillrevived %s (%d), arm64-v8a, debug-signed' % (
-        apk, apk.stat().st_size / 1048576, name, code), flush=True)
+    print('PASS: %s (%.1f MB), app.downhillrevived %s (%d), %s, debug-signed' % (
+        apk, apk.stat().st_size / 1048576, name, code, a.abi), flush=True)
 
 
 if __name__ == '__main__':

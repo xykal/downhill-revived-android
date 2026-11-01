@@ -22,9 +22,21 @@
 
 uintptr_t guest_base;
 static wasm_rt_memory_t *owner;
+#if UINTPTR_MAX == 0xFFFFFFFFull
+/* A 32-bit host (Android armeabi-v7a): wasm32 addresses are still uint32, but the whole span
+   cannot be reserved — it is the process's entire address space — and a uint32 pointer plus a
+   uint32 offset wraps, so guard pages cannot catch an out-of-bounds access anyway. The build
+   therefore uses WABT's software bounds checks (no WASM_RT_MEMCHECK_GUARD_PAGES) and reserves
+   only [0, 0x80000000): every region the layout reaches, since HOST64_MIN_MEMORY_SIZE and the
+   module's initial memory end below 2 GiB. */
+static const uint64_t edges[] = {0,0x00400000,0x02000000,0x08000000,0x0a000000,
+    0x20400000,0x22000000,0x28000000,0x2a000000,0x30400000,0x32000000,
+    0x38000000,0x3a000000,0x80000000ull};
+#else
 static const uint64_t edges[] = {0,0x00400000,0x02000000,0x08000000,0x0a000000,
     0x20400000,0x22000000,0x28000000,0x2a000000,0x30400000,0x32000000,
     0x38000000,0x3a000000,0x100000000ull,0x200000000ull};
+#endif
 enum { REGIONS=sizeof edges/sizeof edges[0]-1 };
 static int mirror(unsigned i) { return i==1 || i==3 || i==5 || i==7 || i==9 || i==11; }
 static uint64_t section_offset(unsigned i) { return edges[i]&0x01ffffff; }

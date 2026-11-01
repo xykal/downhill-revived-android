@@ -46,13 +46,13 @@ void dhd_host_log(const char *line, size_t bytes);
 /* ---------------- device: one per process, never released ---------------- */
 
 enum { DHDR_DEV_VULKAN = 1, DHDR_DEV_FXC = 2, DHDR_DEV_DEBUG = 4, DHDR_DEV_VALIDATION = 8,
-       DHDR_DEV_FALLBACK = 16, DHDR_DEV_NO_DUAL_SOURCE = 32 };
+       DHDR_DEV_FALLBACK = 16, DHDR_DEV_NO_DUAL_SOURCE = 32, DHDR_DEV_GL = 64 };
 enum { DHDR_LOG_ERROR = 1, DHDR_LOG_WARN = 2, DHDR_LOG_INFO = 3 };
 enum { DHDR_FEAT_DUAL_SOURCE = 1, DHDR_FEAT_RENDER_PIPELINES = 2 };
 typedef struct DhdrDeviceDesc {
     uint32_t size;                   /* sizeof(DhdrDeviceDesc) */
     uint32_t abi;                    /* DHDR_ABI_VERSION; init fails (logged) on another size or abi */
-    uint32_t flags;                  /* DHDR_DEV_*: DHD_WGPU_BACKEND=vulkan, DHD_WGPU_COMPILER=fxc,
+    uint32_t flags;                  /* DHDR_DEV_*: DHD_WGPU_BACKEND=vulkan|gl, DHD_WGPU_COMPILER=fxc,
                                         DHD_WGPU_DEBUG (DEBUG | VALIDATION), WARP adapter (FALLBACK),
                                         DHD_WGPU_DUAL_SOURCE=0 (NO_DUAL_SOURCE) */
     uint32_t vendor_id, device_id;   /* PCI ids of the presentation adapter; 0, 0: high performance */

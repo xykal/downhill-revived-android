@@ -33,17 +33,18 @@ pub const fn ieee_fpcr(fpcr: u32) -> u32 {
     fpcr & !((3 << 22) | (1 << 24) | (1 << 25) | (1 << 19) | 0x7 | 0x9F00)
 }
 
-/// The IEEE mode of this target's control register (MXCSR, or FPCR on aarch64).
+/// The IEEE mode of this target's control register (MXCSR, or FPCR/FPSCR on arm).
 #[inline]
 pub const fn ieee_mode(csr: u32) -> u32 {
-    if cfg!(target_arch = "aarch64") {
+    if cfg!(any(target_arch = "aarch64", target_arch = "arm")) {
         ieee_fpcr(csr)
     } else {
         ieee(csr)
     }
 }
 
-/// MXCSR now (FPCR on aarch64; 0 on targets with neither).
+/// MXCSR now (FPCR on aarch64, FPSCR on 32-bit arm — RMode and FZ sit in the same bits; 0 on
+/// targets with neither).
 #[inline]
 pub fn mxcsr() -> u32 {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -60,13 +61,20 @@ pub fn mxcsr() -> u32 {
         unsafe { core::arch::asm!("mrs {}, fpcr", out(reg) v, options(nomem, nostack, preserves_flags)) };
         v as u32
     }
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(target_arch = "arm")]
+    {
+        let v: u32;
+        // SAFETY: reading FPSCR has no side effects (VFPv3: every armv7 Android device).
+        unsafe { core::arch::asm!("vmrs {}, fpscr", out(reg) v, options(nomem, nostack, preserves_flags)) };
+        v
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm")))]
     {
         0
     }
 }
 
-/// Sets MXCSR (FPCR on aarch64; nothing on targets with neither).
+/// Sets MXCSR (FPCR on aarch64, FPSCR on 32-bit arm; nothing on targets with neither).
 #[inline]
 pub fn set_mxcsr(v: u32) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -79,7 +87,12 @@ pub fn set_mxcsr(v: u32) {
     unsafe {
         core::arch::asm!("msr fpcr, {}", "isb", in(reg) v as u64, options(nostack, preserves_flags))
     };
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(target_arch = "arm")]
+    // SAFETY: the values written are the caller's own FPSCR or ieee_fpcr of it (trap bits stay off).
+    unsafe {
+        core::arch::asm!("vmsr fpscr, {}", in(reg) v, options(nostack, preserves_flags))
+    };
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm")))]
     let _ = v;
 }
 

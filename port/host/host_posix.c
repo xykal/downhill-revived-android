@@ -41,6 +41,7 @@
 #include <xmmintrin.h>
 #include <x86intrin.h>
 #elif defined(__aarch64__)
+#elif defined(__arm__)
 #else
 #error Implement the POSIX host for this architecture
 #endif
@@ -94,7 +95,7 @@ void host_exit(int code)
    exception reads as masked (arm64 has no FP traps here). Writing the MXCSR bits into FPCR as they
    are (AND1) left RMode and FZ alone: VU1 on the vu thread (FPCR IEEE) then rounded to nearest with
    denormals, unlike the PS2 and the x64 build. */
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__arm__)
 static const unsigned rc_to_rmode[4] = {0, 2, 1, 3}, rmode_to_rc[4] = {0, 2, 1, 3};
 #endif
 
@@ -105,6 +106,11 @@ unsigned host_fp_csr(void)
 #elif defined(__aarch64__)
     uint64_t v;
     __asm__ volatile("mrs %0, fpcr" : "=r"(v));
+    return 0x1F80u | rmode_to_rc[(v >> 22) & 3] << 13 | ((v >> 24) & 1 ? 0x8040u : 0);
+#elif defined(__arm__)
+    /* FPSCR's RMode (22-23) and FZ (24) sit where FPCR's do; the same translation applies. */
+    uint32_t v;
+    __asm__ volatile("vmrs %0, fpscr" : "=r"(v));
     return 0x1F80u | rmode_to_rc[(v >> 22) & 3] << 13 | ((v >> 24) & 1 ? 0x8040u : 0);
 #endif
 }
@@ -117,6 +123,10 @@ void host_fp_set_csr(unsigned csr)
     uint64_t now, v = (uint64_t)rc_to_rmode[(csr >> 13) & 3] << 22 | (csr & 0x8040u ? 1ull << 24 : 0);
     __asm__ volatile("mrs %0, fpcr" : "=r"(now));
     if (now != v) __asm__ volatile("msr fpcr, %0\n\tisb" :: "r"(v) : "memory");
+#elif defined(__arm__)
+    uint32_t now, v = (uint32_t)rc_to_rmode[(csr >> 13) & 3] << 22 | (csr & 0x8040u ? 1u << 24 : 0);
+    __asm__ volatile("vmrs %0, fpscr" : "=r"(now));
+    if (now != v) __asm__ volatile("vmsr fpscr, %0" :: "r"(v) : "memory");
 #endif
 }
 

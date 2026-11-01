@@ -2740,9 +2740,15 @@ static Native *native_create(NativeExact *exact)
     for (unsigned i = 0; i < 512; i++) n->owner[i] = n->top_owner[i] = -1;
     /* DHD_SCALE (dhd.ini "scale"): 1 to NATIVE_SCALE_MAX (default 2), or "window" for the smallest
        scale whose picture is as tall as the window. Upscaling draws only the pictures; the exact
-       backend answering the game's reads stays at 1x. */
+       backend answering the game's reads stays at 1x. Default 1 on 32-bit Android: budget
+       MediaTek/Mali-G5x GPUs lose about two thirds of the frame rate at 2x (finding 126). */
     const char *scale = getenv("DHD_SCALE");
-    n->scale_setting = 2;
+    n->scale_setting =
+#if defined(__ANDROID__) && defined(__arm__)
+        1;
+#else
+        2;
+#endif
     if (scale && (!native_stricmp(scale, "window") || !native_stricmp(scale, "match"))) n->scale_setting = 0;
     else if (scale && atoi(scale) >= 1) n->scale_setting = (unsigned)atoi(scale);
     if (n->scale_setting > NATIVE_SCALE_MAX) {

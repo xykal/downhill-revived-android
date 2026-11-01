@@ -18,8 +18,26 @@
 #include "core_host.h"  /* guest_base, for the fault bounds check */
 #include "guest_memory_os.h"
 
+#if UINTPTR_MAX == 0xFFFFFFFFull
+#define GUEST_SIZE 0x80000000ull    /* the 32-bit span guest_memory.c's edges end at */
+#else
 #define GUEST_SIZE 0x200000000ull
+#endif
 #define RAM_SIZE 0x2000000ull
+
+#if defined(__ANDROID__) && !defined(__aarch64__) && __ANDROID_API__ < 30
+/* bionic exports memfd_create from API 30 (why ANDROID_API is 30 on arm64); the armv7 target
+   builds against an older platform for the wider device range, so the syscall goes around it.
+   __NR_memfd_create is 385 on arm (unistd.h names it once the platform headers are new enough). */
+#include <sys/syscall.h>
+#ifndef __NR_memfd_create
+#define __NR_memfd_create 385
+#endif
+static int dhd_memfd_create(const char *name, unsigned flags) {
+    return (int)syscall(__NR_memfd_create, name, flags);
+}
+#define memfd_create(name, flags) dhd_memfd_create(name, flags)
+#endif
 
 static int ram_fd=-1;
 static stack_t altstack;

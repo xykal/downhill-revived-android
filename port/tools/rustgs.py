@@ -128,10 +128,11 @@ SETTINGS_WEB_OUT = ROOT / 'build' / 'web'   # dhd_settings.wasm
 X64 = 'x86_64-pc-windows-msvc'
 WASM = 'wasm32-unknown-unknown'
 ANDROID = 'aarch64-linux-android'  # build_host64.py --target android-arm64 (finding 091)
+ANDROID32 = 'armv7-linux-androideabi'  # build_host64.py --target android-armv7 (32-bit MediaTek)
 LINUX = 'x86_64-unknown-linux-gnu'  # build_host64.py --target linux-x64 (here, or cross-built for WSL)
 MAC = 'aarch64-apple-darwin'      # build_host64.py --target macos-arm64, on a Mac
-TARGETS = (X64, WASM, ANDROID, LINUX, MAC)   # i686 is retired
-ARCHIVE_TARGETS = (ANDROID, LINUX, MAC)   # libdhd_render.a
+TARGETS = (X64, WASM, ANDROID, ANDROID32, LINUX, MAC)   # i686 is retired
+ARCHIVE_TARGETS = (ANDROID, ANDROID32, LINUX, MAC)   # libdhd_render.a
 CHECK_TARGETS = TARGETS
 PROFILES = ('release', 'fixloop')
 FEATURES = ('test-hooks',)       # what a caller may add; native / web are rustgs's own
@@ -229,16 +230,25 @@ def c_tools(triple):
         if not Path(found).is_file():
             refuse('no llvm-ar (LLVM) for the C parts of the library')
         return {'AR_' + var: found}
-    if triple == ANDROID:
+    if triple in (ANDROID, ANDROID32):
         import sdl3
         try:
-            bin_dir = sdl3.android_ndk() / 'toolchains' / 'llvm' / 'prebuilt' / 'windows-x86_64' / 'bin'
+            prebuilt = ('windows-x86_64' if os.name == 'nt' else
+                        'darwin-x86_64' if sys.platform == 'darwin' else 'linux-x86_64')
+            bin_dir = sdl3.android_ndk() / 'toolchains' / 'llvm' / 'prebuilt' / prebuilt / 'bin'
         except SystemExit as why:
             refuse(str(why))
         # -g0: ring's build asks clang for -g3, whose DWARF names the registry, the NDK and the
-        # target dir; cc puts these flags last, so they win
-        return {'CC_' + var: str(bin_dir / 'clang.exe'), 'AR_' + var: str(bin_dir / 'llvm-ar.exe'),
-                'CFLAGS_' + var: '-g0'}
+        # target dir; cc puts these flags last, so they win. armv7: cc's own --target has no API
+        # level (the NDK wants armv7a-linux-androideabi26) and defaults to Thumb, which cannot
+        # assemble ring's ARM-mode x25519/curve25519 .S files — -marm for those (and the few C
+        # files beside them, harmlessly).
+        suffix = '.exe' if os.name == 'nt' else ''
+        cflags = '-g0'
+        if triple == ANDROID32:
+            cflags += ' --target=armv7a-linux-androideabi26 -marm'
+        return {'CC_' + var: str(bin_dir / ('clang' + suffix)), 'AR_' + var: str(bin_dir / ('llvm-ar' + suffix)),
+                'CFLAGS_' + var: cflags}
     if triple in (LINUX, MAC) and os.name != 'nt':
         # the machine's own compiler (cc finds it; Apple's through xcrun, with the SDK ring needs),
         # without debug info: ring asks for -g3, whose DWARF names the registry and the target dir
@@ -865,8 +875,8 @@ def build(triple, features=(), profile='release', no_cache=False, crate=RENDER_C
 
 def library(target=X64, features=(), profile='release'):
     """The built library's path (for link scripts; A1c). 'x64' / 'wasm' are accepted for the triple."""
-    triple = {'x64': X64, 'x86_64': X64, 'wasm': WASM, 'wasm32': WASM, 'android': ANDROID, 'linux': LINUX,
-              'mac': MAC}.get(target, target)
+    triple = {'x64': X64, 'x86_64': X64, 'wasm': WASM, 'wasm32': WASM, 'android': ANDROID,
+              'android-armv7': ANDROID32, 'linux': LINUX, 'mac': MAC}.get(target, target)
     return Path(build(triple, features, profile)['lib'])
 
 

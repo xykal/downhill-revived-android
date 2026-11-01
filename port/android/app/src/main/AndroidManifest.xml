@@ -4,8 +4,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     android:installLocation="internalOnly">
 
-    <!-- The renderer is wgpu on Vulkan (1.1: every arm64 phone since 2018). -->
-    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000" android:required="true" />
+    <!-- The renderer is wgpu on Vulkan (1.1: every arm64 phone since 2018), or OpenGL ES 3.0 on
+         the 32-bit build (armeabi-v7a, where budget MediaTek/PowerVR GPUs may lack a usable
+         Vulkan). build_apk.py sets the placeholders per ABI. -->
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000" android:required="${dhdVulkanRequired}" />
+    <uses-feature android:glEsVersion="0x00030000" android:required="${dhdGlEsRequired}" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />

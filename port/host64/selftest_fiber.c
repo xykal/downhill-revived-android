@@ -39,6 +39,8 @@ static uint64_t fp_control(void) {
     return _mm_getcsr() & ~63u;  /* without the sticky exception flags */
 #elif defined(__aarch64__)
     uint64_t f; __asm__ volatile("mrs %0, fpcr" : "=r"(f)); return f;
+#elif defined(__arm__)
+    uint32_t f; __asm__ volatile("vmrs %0, fpscr" : "=r"(f)); return f & ~63u;
 #else
 #error Implement fp_control for this architecture
 #endif

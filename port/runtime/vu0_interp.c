@@ -83,6 +83,11 @@ static inline __attribute__((always_inline)) __m128i vu_neon_cvttps_epi32(__m128
 }
 #undef _mm_cvttps_epi32
 #define _mm_cvttps_epi32(a) vu_neon_cvttps_epi32(a)
+#elif defined(__arm__) && defined(__ARM_NEON)
+/* armeabi-v7a: the same SSE2-to-NEON mapping through SIMDe, without the aarch64 rewrites above
+   (fcmeq's .4s encoding and vaddvq are ARMv8): the generic SSE code below, on SIMDe's NEON. */
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include <simde/x86/sse2.h>
 #else
 #include <xmmintrin.h>
 #include <emmintrin.h>
@@ -1948,11 +1953,12 @@ int ps2_vu1_run(ps2_cpu *cpu, unsigned addr, unsigned top, unsigned itop,
 #ifndef PS2_VU_IEEE  /* plain IEEE ops (operand4): no VU mode, and the shared FP word untouched */
     host_fp_set_csr((control & ~0x603F) | 0xFFC0); /* toward zero, FTZ/DAZ, host masks */
 #endif
-#if defined(PS2_VU_AOT) && !defined(PS2_VU_AOT_EMBED) && !defined(__wasm__) &&     (defined(_WIN64) || defined(__x86_64__) || defined(__aarch64__))
-    /* 64-bit host: ps2_image_load (memory.c) runs in the wasm module, whose copy of this file has
-       no AOT, so it never fills this copy's block and kernel words. Take them from the same loaded
-       image in guest RAM before the first VU1 program, as i686 does at its image load. Without
-       this no block or native kernel ever matches and VU1 runs only on the interpreter. */
+#if defined(PS2_VU_AOT) && !defined(PS2_VU_AOT_EMBED) && !defined(__wasm__) &&     (defined(_WIN64) || defined(__x86_64__) || defined(__aarch64__) || defined(__arm__))
+    /* 64-bit host (and 32-bit Android armv7, with guest_base): ps2_image_load (memory.c) runs in
+       the wasm module, whose copy of this file has no AOT, so it never fills this copy's block and
+       kernel words. Take them from the same loaded image in guest RAM before the first VU1
+       program, as i686 does at its image load. Without this no block or native kernel ever
+       matches and VU1 runs only on the interpreter. */
     static int aot_loaded;
     if (!aot_loaded) {
         aot_loaded = 1;

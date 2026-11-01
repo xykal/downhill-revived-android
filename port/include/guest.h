@@ -17,8 +17,10 @@
 
 #include <stdint.h>
 
-#if defined(__x86_64__) || defined(_WIN64) || defined(__aarch64__)
-/* Host address of guest address 0: a variable on a 64-bit host (host_win32.c). */
+#if defined(__x86_64__) || defined(_WIN64) || defined(__aarch64__) || defined(__arm__)
+/* Host address of guest address 0: a variable on a 64-bit host (host_win32.c) and on 32-bit
+   Android armv7, where the guest span is reserved with mmap (guest_memory.c's 32-bit path);
+   the retired Windows i686 build used identity addressing instead. */
 extern uintptr_t guest_base;
 #define GUEST_BASE guest_base
 #else
