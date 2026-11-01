@@ -12,28 +12,28 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_NET_OFFLINE: 'false'
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - name: NDK
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
           unzip -q /tmp/ndk.zip -d "$HOME/tools"
           echo "ANDROID_NDK_HOME=$HOME/tools/android-ndk-r27c" >> "$GITHUB_ENV"
       - name: Rust (armv7 target)
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/rustup-init https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/rustup-init https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
           chmod +x /tmp/rustup-init && /tmp/rustup-init -y --default-toolchain 1.97.1 --profile minimal --no-modify-path
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" target add armv7-linux-androideabi
       - name: wasi-sdk, wabt, simde
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wasi.tar.gz https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wasi.tar.gz https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz
           tar xzf /tmp/wasi.tar.gz -C "$HOME/tools"
           echo "WASI_SDK=$HOME/tools/wasi-sdk-34.0-x86_64-linux" >> "$GITHUB_ENV"
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wabt.tar.gz https://github.com/WebAssembly/wabt/releases/download/1.0.42/wabt-1.0.42-linux-x64.tar.gz
+          echo "WASI_SYSROOT=$HOME/tools/wasi-sdk-34.0-x86_64-linux/share/wasi-sysroot" >> "$GITHUB_ENV"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wabt.tar.gz https://github.com/WebAssembly/wabt/releases/download/1.0.42/wabt-1.0.42-linux-x64.tar.gz
           tar xzf /tmp/wabt.tar.gz -C "$HOME/tools"
           mkdir -p "$HOME/DevCaches/wabt" && ln -sfn "$HOME/tools/wabt-1.0.42" "$HOME/DevCaches/wabt/wabt-1.0.42"
           git clone -q https://github.com/simd-everywhere/simde.git "$HOME/simde"
@@ -57,7 +57,6 @@ jobs:
     env:
       CARGO_NET_OFFLINE: 'false'
       DHD_ELF_URL: ${{ secrets.DHD_ELF_URL }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -65,7 +64,7 @@ jobs:
       - name: Android SDK
         run: |
           mkdir -p "$HOME/android-sdk/cmdline-tools"
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q /tmp/cmdline.zip -d "$HOME/android-sdk/cmdline-tools"
           mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
           yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$HOME/android-sdk" \
@@ -75,21 +74,22 @@ jobs:
           echo "ANDROID_USER_HOME=$HOME/gradle-home/au" >> "$GITHUB_ENV"
       - name: NDK
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
           unzip -q /tmp/ndk.zip -d "$HOME/tools"
           echo "ANDROID_NDK_HOME=$HOME/tools/android-ndk-r27c" >> "$GITHUB_ENV"
       - name: Rust (armv7 target)
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/rustup-init https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/rustup-init https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
           chmod +x /tmp/rustup-init && /tmp/rustup-init -y --default-toolchain 1.97.1 --profile minimal --no-modify-path
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" target add armv7-linux-androideabi
       - name: wasi-sdk, wabt, simde
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wasi.tar.gz https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wasi.tar.gz https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz
           tar xzf /tmp/wasi.tar.gz -C "$HOME/tools"
           echo "WASI_SDK=$HOME/tools/wasi-sdk-34.0-x86_64-linux" >> "$GITHUB_ENV"
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wabt.tar.gz https://github.com/WebAssembly/wabt/releases/download/1.0.42/wabt-1.0.42-linux-x64.tar.gz
+          echo "WASI_SYSROOT=$HOME/tools/wasi-sdk-34.0-x86_64-linux/share/wasi-sysroot" >> "$GITHUB_ENV"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/wabt.tar.gz https://github.com/WebAssembly/wabt/releases/download/1.0.42/wabt-1.0.42-linux-x64.tar.gz
           tar xzf /tmp/wabt.tar.gz -C "$HOME/tools"
           mkdir -p "$HOME/DevCaches/wabt" && ln -sfn "$HOME/tools/wabt-1.0.42" "$HOME/DevCaches/wabt/wabt-1.0.42"
           git clone -q https://github.com/simd-everywhere/simde.git "$HOME/simde"
@@ -100,20 +100,30 @@ jobs:
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Prime cargo registry (rustgs builds --locked --offline)
         run: cd port/render && cargo fetch --locked
-      - name: Game ELF (your own dump; BYOD)
+      - name: Player dump — SCUS_971.77 from DHD_ELF_URL (BYOD)
         if: env.DHD_ELF_URL != ''
         run: |
-          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/scus.elf "$DHD_ELF_URL"
-          echo "DHD_VUTEXT=/tmp/scus.elf" >> "$GITHUB_ENV"
-      - name: Build libraries + APK (armeabi-v7a)
+          python3 -m pip install --user -q pycdlib
+          mkdir -p iso
+          python3 port/tools/fetch_dump.py "$DHD_ELF_URL" iso/SCUS_971.77
+      - name: "Split (splat: asm/ and assets/ from the dump)"
+        if: env.DHD_ELF_URL != ''
         run: |
-          if [ -n "$DHD_VUTEXT" ]; then
-            python3 port/tools/build_host64.py --target android-armv7 --wasi "$WASI_SDK" --jobs 4
-          else
-            echo "DHD_ELF_URL secret unset: fixture link (no game module) only"
-            python3 port/tools/build_host64.py --target android-armv7 --fake --wasi "$WASI_SDK" --jobs 4
-          fi
-          python3 port/android/build_apk.py --abi armeabi-v7a
+          python3 -m pip install --user -q -r requirements.txt
+          python3 tools/split.py
+      - name: Core and host (build.py --target android-armv7)
+        if: env.DHD_ELF_URL != ''
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lld llvm clang
+          echo "$WASI_SDK/bin" >> "$GITHUB_PATH"
+          python3 port/tools/build.py --target android-armv7
+      - name: Fixture libraries (no dump secret)
+        if: env.DHD_ELF_URL == ''
+        run: |
+          echo "DHD_ELF_URL secret unset: fixture link (no game module) only"
+          python3 port/tools/build_host64.py --target android-armv7 --fake --wasi "$WASI_SDK" --jobs 4
+      - name: APK (armeabi-v7a, debug-signed)
+        run: python3 port/android/build_apk.py --abi armeabi-v7a
       - uses: actions/upload-artifact@v4
         with:
           name: downhill-revived-armeabi-v7a-debug
