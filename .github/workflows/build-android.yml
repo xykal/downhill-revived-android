@@ -52,7 +52,7 @@ jobs:
   apk:
     name: armeabi-v7a APK
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: fixture
     env:
       CARGO_NET_OFFLINE: 'false'

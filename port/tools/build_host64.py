@@ -424,7 +424,9 @@ def main():
             host_objects = []
         else:
             with ThreadPoolExecutor(jobs) as pool:
-                host_objects = list(pool.map(lambda u: compile_one(ROOT/u, 900), host_units(t)))
+                # 3600: the VU1 AOT TU (vu0_interp.c + vu1_aot.inc's 718 blocks, -O3, armv7)
+                # needs well past 900 s on a 4-core runner; the wasm2c module C is big too.
+                host_objects = list(pool.map(lambda u: compile_one(ROOT/u, 3600), host_units(t)))
             library = work/('host64.lib' if t.windows else 'libhost64.a')
             library.unlink(missing_ok=True)  # ar adds to an archive that is there: a stale member could win
             run([a.llvm/'llvm-lib.exe', '/out:'+str(library), *host_objects] if t.windows else
