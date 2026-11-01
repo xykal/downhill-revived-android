@@ -66,8 +66,9 @@ static const Key keys[] = {
 enum { KEYS = sizeof keys / sizeof *keys };
 
 #define RAMP_SECONDS 0.1
-#if defined(_WIN64) || defined(__x86_64__) || defined(__aarch64__)
-/* Native devices consume the module's published rate, never call game logic. */
+#if defined(_WIN64) || defined(__x86_64__) || defined(__aarch64__) || defined(__arm__)
+/* Native devices consume the module's published rate, never call game logic. (armv7 follows
+   the arm64 phone build.) */
 #define FIELD_SECONDS (host_pacing_period() < 1.0/60 ? host_pacing_period() : 1.0/60)
 #else
 #define FIELD_SECONDS (port_fps_high() ? port_frame_period() : 1.0 / 60)
