@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include "../host/host_api.h"
 extern uintptr_t guest_base;
+/* Reserve the guest span before SDL and Java grow (android_main.c's first call): a 32-bit
+   process's address space is never as whole as it is at the start. No-op once reserved. */
+void guest_memory_reserve_early(void);
 /* Bind the exported mutable __stack_pointer before creating any EE fibers. */
 void host64_fiber_bind(uint32_t *stack_pointer);
 void host64_fiber_shutdown(void);

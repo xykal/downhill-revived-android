@@ -211,6 +211,12 @@ static void settings_start(const char *disc)
 
 __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
 {
+    /* the guest span before anything grows into the address space (32-bit: the reservation
+       that decides whether the game fits at all) */
+    {
+        extern void guest_memory_reserve_early(void);
+        guest_memory_reserve_early();
+    }
     const char *storage = SDL_GetAndroidInternalStoragePath();
     if (!storage) {
         __android_log_print(ANDROID_LOG_ERROR, TAG, "no internal storage (%s)", SDL_GetError());

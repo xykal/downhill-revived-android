@@ -19,7 +19,8 @@
 #include "guest_memory_os.h"
 
 #if UINTPTR_MAX == 0xFFFFFFFFull
-#define GUEST_SIZE 0x80000000ull    /* the 32-bit span guest_memory.c's edges end at */
+#define GUEST_SIZE 0x70E10000ull    /* the 32-bit span guest_memory.c's edges end at:
+                                       INITIAL_MEMORY (build_wasm.py) + one page */
 #else
 #define GUEST_SIZE 0x200000000ull
 #endif
@@ -57,10 +58,23 @@ uintptr_t os_reserve(void) {
 #endif
     if (ram_fd<0) return 0;
     if (ftruncate(ram_fd,RAM_SIZE)<0) { close(ram_fd); ram_fd=-1; return 0; }
-    /* MAP_NORESERVE: the 8 GiB reservation must not charge swap; committed
+    /* MAP_NORESERVE: the reservation must not charge swap; committed
        pages are charged when mprotect commits them. */
     void *p=mmap(NULL,GUEST_SIZE,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
-    if (p==MAP_FAILED) { close(ram_fd); ram_fd=-1; return 0; }
+    if (p==MAP_FAILED) {
+#if UINTPTR_MAX == 0xFFFFFFFFull
+        /* A 32-bit host: no span hole left in the address space. The map says where it went
+           (the log the player can read); the span is INITIAL_MEMORY + a page at most. */
+        { FILE *maps = fopen("/proc/self/maps", "r"); char line[512];
+          fprintf(stderr, "host64 memory: no %llu MiB span hole in this 32-bit address space\n",
+                  (unsigned long long)(GUEST_SIZE >> 20));
+          if (maps) {
+              while (fgets(line, sizeof line, maps)) fputs(line, stderr);
+              fclose(maps);
+          } }
+#endif
+        close(ram_fd); ram_fd=-1; return 0;
+    }
     return (uintptr_t)p;
 }
 /* No placeholder splitting on POSIX: MAP_FIXED overlays the reservation. */

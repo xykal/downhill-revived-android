@@ -27,11 +27,15 @@ static wasm_rt_memory_t *owner;
    cannot be reserved — it is the process's entire address space — and a uint32 pointer plus a
    uint32 offset wraps, so guard pages cannot catch an out-of-bounds access anyway. The build
    therefore uses WABT's software bounds checks (no WASM_RT_MEMCHECK_GUARD_PAGES) and reserves
-   only [0, 0x80000000): every region the layout reaches, since HOST64_MIN_MEMORY_SIZE and the
-   module's initial memory end below 2 GiB. */
+   only [0, 0x70E10000): the scratchpad at 0x70000000 and the module's statics at 0x70100000
+   are addresses the game's own code carries (the PS2's), so the wasm memory cannot start
+   lower, and INITIAL_MEMORY (build_wasm.py, 0x70E00000) plus a page is all the span must
+   reach. The 8 GiB (or 2 GiB) span does not fit beside Android's runtime in a 32-bit
+   process's ~3 GiB of address space (an mmap ENOMEM at start; the span a device can hold
+   varies). Growth past the span fails in wasm_rt_grow_memory (UINT32_MAX), never a fault. */
 static const uint64_t edges[] = {0,0x00400000,0x02000000,0x08000000,0x0a000000,
     0x20400000,0x22000000,0x28000000,0x2a000000,0x30400000,0x32000000,
-    0x38000000,0x3a000000,0x80000000ull};
+    0x38000000,0x3a000000,0x70E10000ull};
 #else
 static const uint64_t edges[] = {0,0x00400000,0x02000000,0x08000000,0x0a000000,
     0x20400000,0x22000000,0x28000000,0x2a000000,0x30400000,0x32000000,
@@ -59,13 +63,19 @@ int host64_memory_commit_stack(uint32_t sp) {
     return sp>HOST64_NULL_GUARD && sp<=0x00400000 &&
         host64_memory_commit(HOST64_NULL_GUARD,sp-HOST64_NULL_GUARD);
 }
+/* An early reserve (android_main.c, the first call in SDL_main): the address space is wholest
+   right after the zygote fork, before SDL, the disc picker and Java grow into it. */
+void guest_memory_reserve_early(void) {
+    if (guest_base || owner) return;
+    guest_base=os_reserve();
+}
 void wasm_rt_allocate_memory(wasm_rt_memory_t *m,uint64_t initial,uint64_t max,
                              bool is64,uint32_t page_size) {
     if (owner || is64 || page_size!=65536 || initial<HOST64_MIN_MEMORY_SIZE/65536 ||
         initial>max || max>65536 || initial*65536<=HOST64_MODULE_BASE)
         os_fail("unsupported module memory layout");
     guest_base=os_reserve();
-    if (!guest_base) os_fail("reserve 8 GiB");
+    if (!guest_base) os_fail("reserve guest span");
     for (unsigned i=0;i<REGIONS-1;i++)
         if (!os_split(guest_base+edges[i],edges[i+1]-edges[i])) os_fail("split reservation");
     for (unsigned i=0;i<REGIONS-1;i++) {
