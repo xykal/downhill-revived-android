@@ -29,6 +29,9 @@
 #include "../host/backtrace_posix.h"  /* <execinfo.h>, or Android's own (API < 33) */
 #ifdef __ANDROID__
 #include <android/log.h>
+#if defined(__arm__)
+#include "android_crash_log.h"
+#endif
 #endif
 #ifdef __APPLE__
 #include <mach/mach.h>  /* thread_info: the bench's thread times */
@@ -369,6 +372,13 @@ static LONG WINAPI crashed(EXCEPTION_POINTERS *e)
 /* Fatal signals end the process with the same words the Windows crash report has. */
 static void crashed(int sig, siginfo_t *info, void *ctx)
 {
+#if defined(__ANDROID__) && defined(__arm__)
+    dhd_crash_write(sig, info, (const ucontext_t *)ctx, GUEST_BASE);
+    /* Do not probe memory or use stdio in a fatal signal. SA_RESETHAND means that
+       returning to a synchronous fault lets Android debuggerd receive the original fault. */
+    if (info && info->si_code > 0) return;
+    _exit(128 + sig);
+#else
     const char *name = sig == SIGSEGV ? "SIGSEGV" : sig == SIGBUS ? "SIGBUS" : sig == SIGILL ? "SIGILL" : "SIGFPE";
     char thread[17] = "?";
     pthread_getname_np(pthread_self(), thread, sizeof thread);  /* which of the port's threads (host_thread_name) */
@@ -384,6 +394,7 @@ static void crashed(int sig, siginfo_t *info, void *ctx)
     peek();
     fflush(stderr);
     _exit(3);
+#endif
 }
 #endif
 
@@ -711,6 +722,11 @@ void host_init(void)
 #else
     struct sigaction sa, dump_sa;
     const char *dump = getenv("DHD_DUMP");
+#if defined(__ANDROID__) && defined(__arm__)
+    /* The external mirror is opened in append mode before host_init. */
+    extern int android_crash_log_fd(void);
+    dhd_crash_init(android_crash_log_fd(), (const void *)&host_init);
+#endif
     memset(&sa, 0, sizeof sa);
     sa.sa_sigaction = crashed;
     sigemptyset(&sa.sa_mask);
@@ -750,6 +766,9 @@ static int log_pipe[2] = {-1, -1};
 static FILE *log_file;
 static FILE *log_mirror;  /* Android: the same lines in the app's external files folder, where
                              the player can reach them from a file manager without adb */
+#if defined(__ANDROID__) && defined(__arm__)
+int android_crash_log_fd(void) { return log_mirror ? fileno(log_mirror) : (log_file ? fileno(log_file) : -1); }
+#endif
 static atomic_int log_busy;  /* the thread is between a read and its last line written */
 
 static void log_line(char *line)

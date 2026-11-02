@@ -48,6 +48,12 @@ jobs:
           cd "$HOME/simde" && git checkout -q 65c15e6
           ln -sfn "$HOME/simde" "$HOME/DevCaches/simde-src"
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
+      - name: Signal-safe crash record regression (Linux host)
+        run: |
+          cc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \
+            port/hle/test_android_crash_log.c -ldl -o /tmp/test-android-crash-log
+          ulimit -c 0
+          /tmp/test-android-crash-log
       - name: Guest reservation ownership regression
         run: |
           cc -std=gnu11 -Wall -Wextra -Werror \
@@ -66,6 +72,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-arm-linux-gnueabihf qemu-user
           common="-std=gnu11 -O2 -static -march=armv7-a -mfpu=vfpv3-d16 -Wall -Wextra -Werror"
+          # Exercise the real ARM mcontext registers and re-raised synchronous SIGSEGV.
+          arm-linux-gnueabihf-gcc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \
+            port/hle/test_android_crash_log.c -ldl -o /tmp/test-crash-armv7
+          ulimit -c 0
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-crash-armv7
           arm-linux-gnueabihf-gcc $common -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
             port/host64/guest_memory.c port/host64/test_reservation.c -o /tmp/test-reservation-armv7
           qemu-arm /tmp/test-reservation-armv7
@@ -181,7 +192,7 @@ jobs:
           export PATH="/usr/lib/llvm-23/bin:$WASI_SDK/bin:$PATH"
           clang --version | head -1
           wasm-ld --version | head -1
-          python3 port/tools/build.py --target android-armv7
+          python3 port/tools/build.py --target android-armv7 -- --debug
       - name: Fixture libraries (no dump secret)
         if: env.DHD_ELF_URL == ''
         run: |
@@ -208,3 +219,20 @@ jobs:
           name: ${{ inputs.experimental_split == true && 'downhill-revived-armeabi-v7a-experimental-unverified' || 'downhill-revived-armeabi-v7a-release' }}
           path: build/android/*armeabi-v7a*.apk
           if-no-files-found: error
+
+      - name: Verify matching Android ELF build IDs
+        if: env.DHD_ELF_URL != ''
+        run: |
+          tool="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          a=$("$tool" -n build/android/libmain.debug.so | grep 'Build ID:' | awk '{print $3}')
+          b=$("$tool" -n build/android/lib/armeabi-v7a/libmain.so | grep 'Build ID:' | awk '{print $3}')
+          test -n "$a" && test "$a" = "$b"
+          echo "matching Android ELF Build ID: $a"
+      - name: Upload matching unstripped native symbols (CI artifact)
+        if: env.DHD_ELF_URL != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-armv7-native-symbols-${{ github.sha }}
+          path: build/android/libmain.debug.so
+          if-no-files-found: error
+          retention-days: 30
