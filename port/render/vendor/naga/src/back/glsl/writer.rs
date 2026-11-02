@@ -1063,16 +1063,11 @@ impl<'a, W: Write> Writer<'a, W> {
                 match built_in {
                     crate::BuiltIn::Position { invariant: true } => {
                         match (self.options.version, self.entry_point.stage) {
-                            (
-                                Version::Embedded {
-                                    version: 300,
-                                    is_webgl: true,
-                                },
-                                ShaderStage::Fragment,
-                            ) => {
-                                // `invariant gl_FragCoord` is not allowed in WebGL2 and possibly
-                                // OpenGL ES in general (waiting on confirmation).
-                                //
+                            (Version::Embedded { .. }, ShaderStage::Fragment) => {
+                                // `gl_FragCoord` is a fragment *input*. GLSL ES
+                                // permits invariant only on outputs; PowerVR ES
+                                // drivers reject this declaration. Keep invariant
+                                // on the vertex gl_Position output instead.
                                 // See https://github.com/KhronosGroup/WebGL/issues/3518
                             }
                             _ => {

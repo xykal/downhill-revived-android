@@ -39,6 +39,21 @@ const char *host_disc_check(const char *path);  /* host.c: NULL when path is the
 
 static char files[1024];      /* the app's files folder, with a trailing slash */
 static char exe[1100];        /* files + "dhd64": what host_exe_path answers */
+static Uint64 boot_start_ms;
+#ifndef DHD_BUILD_ID
+#define DHD_BUILD_ID "unknown"
+#endif
+
+/* Progress goes to the same dhd.log and logcat, once per phase, not each frame.
+   Times are relative to SDL_main, not claims about actual screen visibility. */
+void android_boot_note(const char *phase)
+{
+    Uint64 now = SDL_GetTicks();
+    fprintf(stderr, "[BOOT +%llu.%03llus] %s\n",
+            (unsigned long long)((now - boot_start_ms) / 1000),
+            (unsigned long long)((now - boot_start_ms) % 1000), phase);
+    fflush(stderr);
+}
 
 /* host_posix.c's host_exe_path on Android. */
 const char *android_exe_path(void) { return exe; }
@@ -141,8 +156,10 @@ extern void host_backtrace(void);
 
 static void crash_report(int sig)
 {
-    fprintf(stderr, "\n*** Downhill Revived crashed (signal %d) ***\n", sig);
+    fprintf(stderr, "\n========== [CRASH] signal %d ==========\n", sig);
+    fprintf(stderr, "[CRASH] See the last [BOOT] phase and ERROR lines above; backtrace follows.\n");
     host_backtrace();
+    fprintf(stderr, "========== [END CRASH] ==========\n");
     fflush(NULL);
     signal(sig, SIG_DFL);
     raise(sig);
@@ -212,6 +229,7 @@ static void settings_start(const char *disc)
 
 __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
 {
+    boot_start_ms = SDL_GetTicks();
     /* the guest span before anything grows into the address space (32-bit: the reservation
        that decides whether the game fits at all) */
     {
@@ -236,6 +254,14 @@ __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
         }
     }
     host_console_init();
+    fprintf(stderr, "[BUILD] Android commit=%s; split-memory=%s\n", DHD_BUILD_ID,
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+            "experimental"
+#else
+            "off"
+#endif
+    );
+    android_boot_note("App started; log opened");
 #ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
     {
         extern uintptr_t guest_base;
@@ -255,10 +281,12 @@ __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
     char disc[4096];
+    android_boot_note("Checking game disc; a file picker may appear");
     if (!disc_ready(disc, sizeof disc)) {
-        fprintf(stderr, "android: no disc image; the game ends\n");
+        fprintf(stderr, "[BOOT] No usable disc selected; exiting.\n");
         exit(0);
     }
+    android_boot_note("Disc readable; starting game core");
     settings_start(disc);
     char *args[] = {exe, NULL};
     (void)argc; (void)argv;

@@ -344,6 +344,12 @@ static int init(void)
     surface = 1;
     SDL_AddEventWatch(lifecycle_watch, NULL);
     hle_log("gs: WebGPU presentation (%s, window kind %u)\n", gs_gpu_backend_name(&gs), target.kind);
+#ifdef __ANDROID__
+    {   /* The game may still need time to draw its first frame. */
+        extern void android_boot_note(const char *phase);
+        android_boot_note("Window surface ready; waiting for first frame");
+    }
+#endif
     sdl_host_run(show_window, NULL);
     if (fullscreen) gs_window_apply();  /* the whole monitor */
     return 1;

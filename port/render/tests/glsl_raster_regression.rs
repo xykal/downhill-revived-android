@@ -35,3 +35,32 @@ fn primitive_local_initialization_avoids_nested_constructors_on_gles() {
         }
     }
 }
+
+#[test]
+fn invariant_position_only_on_vertex_output_in_gles() {
+    use naga::{back::glsl, valid::{Capabilities, ValidationFlags, Validator}, ShaderStage};
+    // As in native/init.rs: with clip-space w=1, replace noperspective by
+    // perspective only on GL. Test the actual game shader, not a mock.
+    let shader = include_str!("../../gs/native.wgsl")
+        .replace("@location(0) @interpolate(linear) stqf", "@location(0) @interpolate(perspective) stqf")
+        .replace("@location(1) @interpolate(linear) color", "@location(1) @interpolate(perspective) color");
+    let module = naga::front::wgsl::parse_str(&shader).expect("parse native WGSL");
+    let info = Validator::new(ValidationFlags::all(), Capabilities::all()).validate(&module).expect("validate native WGSL");
+    for version in [glsl::Version::new_gles(310), glsl::Version::new_gles(320), glsl::Version::Desktop(450)] {
+        for (stage, entry) in [(ShaderStage::Vertex, "native_vertex"), (ShaderStage::Fragment, "native_pixel"),
+                               (ShaderStage::Fragment, "native_pixel_blend")] {
+            let pipeline = glsl::PipelineOptions { shader_stage: stage, entry_point: entry.into(), multiview: None };
+            let options = glsl::Options { version, ..Default::default() };
+            let mut output = String::new();
+            glsl::Writer::new(&mut output, &module, &info, &options, &pipeline, Default::default())
+                .expect("GLSL writer").write().expect("translate native shader");
+            if stage == ShaderStage::Vertex {
+                assert!(output.contains("invariant gl_Position;"), "{version:?} must preserve vertex invariance");
+            } else if matches!(version, glsl::Version::Embedded { .. }) {
+                assert!(!output.contains("invariant gl_FragCoord;"), "{version:?} fragment input must not be invariant");
+            } else {
+                assert!(output.contains("invariant gl_FragCoord;"), "desktop output unchanged");
+            }
+        }
+    }
+}

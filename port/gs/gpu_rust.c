@@ -41,6 +41,10 @@
 #include <string.h>
 #include "dhd_render.h"   /* -Iport/render/include */
 
+#ifdef __ANDROID__
+void android_boot_note(const char *phase);
+#endif
+
 #ifndef DHD_GS_TEST_BUILD
 #include "../net/net.h"
 #endif
@@ -66,6 +70,11 @@ static void counter_present(DhdrSurface *surface)
     dhdr_surface_counter(surface, enabled, ping,
                          (double)SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency());
     dhdr_surface_present(surface);
+#ifdef __ANDROID__
+    static SDL_AtomicInt first_present = {0};
+    if (SDL_CompareAndSwapAtomicInt(&first_present, 0, 1))
+        android_boot_note("First frame present requested (not proof it was visible)");
+#endif
 }
 
 /* Rust's log lines (one UTF-8 line, no newline), from any thread: stderr, which is dhd.log in the
@@ -449,6 +458,9 @@ int gs_gpu_init(Gs *g)
 {
     const char *render = getenv("DHD_RENDER");
     int native = render && !strcmp(render, "native");
+#ifdef __ANDROID__
+    android_boot_note("Starting graphics device and selecting GPU");
+#endif
     if (!device_init()) return 0;
     Rust *p = calloc(1, sizeof *p);
     if (!p) return 0;
@@ -457,11 +469,25 @@ int gs_gpu_init(Gs *g)
     const char *limit = getenv("DHD_GS_BATCH");
     exact_config(&p->e, getenv("DHD_PROFILE") != NULL, limit ? strtoul(limit, NULL, 0) : 0);
     p->raster = raster_flags();
+#ifdef __ANDROID__
+    android_boot_note("Compiling exact GS pipelines; this may take time");
+#endif
     if (!(p->x = dhdr_exact_create(p->raster))) goto fail;
+#ifdef __ANDROID__
+    android_boot_note("Exact GS pipelines ready");
+#endif
     exact_hooks(g, &p->e);
     /* DHD_RENDER=native draws on this device too; the exact renderer then answers only the Z probe. */
-    if (native && !native_init(g, p))
-        fprintf(stderr, "gs: native renderer unavailable; using the exact renderer\n");
+    if (native) {
+#ifdef __ANDROID__
+        android_boot_note("Compiling native renderer pipelines");
+#endif
+        if (!native_init(g, p))
+            fprintf(stderr, "gs: native renderer unavailable; using the exact renderer\n");
+    }
+#ifdef __ANDROID__
+    android_boot_note("Renderer initialization complete; preparing window surface");
+#endif
     return 1;
 fail:
     fprintf(stderr, "gs: WebGPU rasterizer initialization failed\n");

@@ -910,6 +910,11 @@ void host_console_init(void)
     while (n && path[n - 1] != '\\' && path[n - 1] != '/') n--;
     snprintf(path + n, sizeof path - n, data ? "%s/dhd.log" : "%sdhd.log", data ? data : "");
     console_open(path);
+#ifdef __ANDROID__
+    /* The shared phone-visible log appends across launches. Separate them so
+       a crash report can be read without confusing it with an older run. */
+    fprintf(stderr, "\n========== [NEW LAUNCH pid=%d] ==========\n", (int)getpid());
+#endif
     log_version();
 }
 

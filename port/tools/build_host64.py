@@ -406,6 +406,12 @@ def main():
                 extra += ['-I'+str(ROOT/'port/render/include')]  # dhd_render.h
             if rel.endswith('host64/launcher.c') and t.android:
                 extra += ['-Dmain=dhd_launcher_main']  # SDL_main (android_main.c) calls it
+            if rel.endswith('host/android_main.c') and t.android:
+                # CI supplies the checked-out commit. Keep unknown for local builds
+                # without it; never claim a revision based on a stale APK filename.
+                revision = os.environ.get('GITHUB_SHA', '')
+                if len(revision) >= 12 and all(c in '0123456789abcdefABCDEF' for c in revision):
+                    extra += ['-DDHD_BUILD_ID="%s"' % revision[:12]]
             if 'libmpeg2/' in rel:
                 extra += ['-I'+str(ROOT/'port/third_party/libmpeg2')]
             obj = objdir/(rel.replace('/', '_') + suffix)
