@@ -61,3 +61,15 @@ in the hole. CI cross-compiles the prototype for armv7. These tests do not
 validate wasm/native access protection, Android runtime behavior, game boot,
 content URI I/O, or rendering. The full audit and 32-bit runtime tests above are
 still required before enabling it or distributing an APK as fixed.
+
+## Additional 32-bit allocator defects
+
+32-bit ARM tests exposed another bug independent of fragmentation: the shared
+loop skipped its last region, which is the inaccessible guard on 64-bit but
+contains the scratchpad and module on 32-bit. The fix processes all 32-bit
+regions and rejects memory growth beyond the actually reserved span, before
+calling any decommit on failure. A mocked ownership/commit test and a real POSIX
+`mmap` test both pass as 32-bit ARM Linux binaries under QEMU, as well as on
+Linux x64. A negative control confirmed the prior armv7 code fails the module
+commit assertion. QEMU Linux is not Android; these do not prove phone boot.
+The allocator still cannot reserve a contiguous span on the reported phone.
