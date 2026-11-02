@@ -17,8 +17,14 @@
 #include <unistd.h>
 #include "core_host.h"  /* guest_base, for the fault bounds check */
 #include "guest_memory_os.h"
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+#include "memory_layout.h"
+#include "split_reservation.h"
+#endif
 
-#if UINTPTR_MAX == 0xFFFFFFFFull
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY)
+#define GUEST_SIZE DHD_SPLIT_HIGH_END
+#elif UINTPTR_MAX == 0xFFFFFFFFull
 #define GUEST_SIZE 0x70E10000ull    /* the 32-bit span guest_memory.c's edges end at:
                                        INITIAL_MEMORY (build_wasm.py) + one page */
 #else
@@ -58,6 +64,22 @@ uintptr_t os_reserve(void) {
 #endif
     if (ram_fd<0) return 0;
     if (ftruncate(ram_fd,RAM_SIZE)<0) { close(ram_fd); ram_fd=-1; return 0; }
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    /* Experimental only: snapshot and claim both regions without MAP_FIXED.
+       The snapshot can race other threads. Re-read it on a failed claim;
+       no failed attempt overwrites another mapping or leaks the first region. */
+    static DhdAddressGap gaps[4096];
+    const DhdSplitLayout layout={DHD_SPLIT_LOW_RESERV_END,DHD_SPLIT_HIGH_RESERV_BEGIN,
+        DHD_SPLIT_HIGH_END-DHD_SPLIT_HIGH_RESERV_BEGIN,HOST64_PAGE};
+    for (unsigned attempt=0;attempt<8;attempt++) {
+        size_t n=0; uint64_t base=0;
+        if (!dhd_split_read_gaps(gaps,4096,&n,0x10000,0xffff0000) ||
+            !dhd_split_find(gaps,n,layout,&base)) break;
+        if (dhd_split_claim((uintptr_t)base,layout)) return (uintptr_t)base;
+    }
+    fprintf(stderr,"host64 memory: experimental split reservation failed\n");
+    close(ram_fd); ram_fd=-1; return 0;
+#else
     /* MAP_NORESERVE: the reservation must not charge swap; committed
        pages are charged when mprotect commits them. */
     void *p=mmap(NULL,GUEST_SIZE,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
@@ -76,6 +98,7 @@ uintptr_t os_reserve(void) {
         close(ram_fd); ram_fd=-1; return 0;
     }
     return (uintptr_t)p;
+#endif
 }
 /* No placeholder splitting on POSIX: MAP_FIXED overlays the reservation. */
 int os_split(uintptr_t at,uint64_t size) {
@@ -127,7 +150,12 @@ static void fault(int sig,siginfo_t *info,void *ctx) {
     /* Not ours: restore the default and re-raise. */
     struct sigaction dfl; memset(&dfl,0,sizeof dfl);
     dfl.sa_handler=SIG_DFL; sigemptyset(&dfl.sa_mask);
-    if (!guest_base || host<guest_base || host-guest_base>=GUEST_SIZE) {
+    if (!guest_base || host<guest_base || host-guest_base>=GUEST_SIZE
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+        || (host-guest_base>=DHD_SPLIT_LOW_RESERV_END &&
+            host-guest_base<DHD_SPLIT_HIGH_RESERV_BEGIN)
+#endif
+    ) {
         sigaction(sig,&dfl,NULL); raise(sig); return;
     }
     static const char head[]="host64 memory: access of uncommitted guest address 0x";

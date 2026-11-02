@@ -67,6 +67,17 @@ jobs:
           arm-linux-gnueabihf-gcc $common \
             port/host64/split_reservation.c port/host64/test_split_reservation.c -o /tmp/test-split-armv7
           qemu-arm /tmp/test-split-armv7
+          arm-linux-gnueabihf-gcc $common -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
+            port/host64/test_split_access.c -o /tmp/test-split-access-armv7
+          qemu-arm /tmp/test-split-access-armv7
+          python3 port/tools/test_split_module.py --wabt "$HOME/tools/wabt-1.0.42" --negative-control
+          python3 port/tools/test_split_module.py --wabt "$HOME/tools/wabt-1.0.42" --arm --negative-control
+          ndkcc="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang"
+          for source in guest_memory.c guest_memory_posix.c bridge.c test_split_access.c; do
+            "$ndkcc" -std=gnu11 -DDHD_EXPERIMENTAL_SPLIT_MEMORY -D_FILE_OFFSET_BITS=64 \
+              -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
+              -c "port/host64/$source" -o "/tmp/$source.armv7.o"
+          done
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Prime cargo registry (rustgs builds --locked --offline)

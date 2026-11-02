@@ -5,16 +5,30 @@
 #include "bridge.h"
 #include "core_host.h"
 #include "../include/guest.h"
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+#include "split_guest_range.h"
+#endif
 static wasm_rt_memory_t *memory;
 static uint32_t next;
 void host64_bridge_bind(wasm_rt_memory_t *m) { memory=m; next=0x07000000; }
 void *host64_bridge_pointer(uint32_t at,uint32_t bytes) {
     if (!memory || (!at && bytes) || (uint64_t)at+bytes>memory->size) wasm_rt_trap(WASM_RT_TRAP_OOB);
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    /* Even for an empty buffer, don't hand a host function a raw pointer to
+       an unrelated Android mapping. NULL + zero keeps existing semantics. */
+    if (at && !host64_split_span_ok(at,bytes ? bytes : 1)) wasm_rt_trap(WASM_RT_TRAP_OOB);
+#endif
     return at ? GUEST(at) : NULL;
 }
 const char *host64_bridge_string(uint32_t at) {
     const char *s=host64_bridge_pointer(at,1);
-    if (!memchr(s,0,(size_t)(memory->size-at))) wasm_rt_trap(WASM_RT_TRAP_OOB);
+    uint64_t available=memory->size-at;
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    /* Don't let the scan read past the owning segment into the unowned hole. */
+    uint64_t region_end=at<DHD_SPLIT_LOW_END ? DHD_SPLIT_LOW_END : DHD_SPLIT_HIGH_END;
+    if (available>region_end-at) available=region_end-at;
+#endif
+    if (!memchr(s,0,(size_t)available)) wasm_rt_trap(WASM_RT_TRAP_OOB);
     return s;
 }
 uint32_t host64_bridge_array_bytes(int32_t count,uint32_t stride) {
@@ -47,7 +61,12 @@ int host_mem_commit(uint32_t at,uint32_t size) {
 }
 /* The allocator reserves the whole space: every in-range span qualifies. */
 int host_mem_reserved(uint32_t at,uint32_t size) {
-    return memory && (uint64_t)at+size<=memory->size;
+    if (!memory || (uint64_t)at+size>memory->size) return 0;
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    return host64_split_span_ok(at,size);
+#else
+    return 1;
+#endif
 }
 /* host.c arms DHD_STATE_WATCH; the i686 definition (state_trace.c) is module code here.
    Same rule: only under DHD_STATE_TRACE, NULL when unset. */

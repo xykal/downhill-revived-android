@@ -8,6 +8,14 @@
    and what the module or host commits explicitly (host_mem_commit: scratchpad
    and hardware windows; EE stack slots; the bridge arena) is committed. */
 #define HOST64_MODULE_BASE 0x70100000ull
+/* Experimental split layout. The two boundary guard pages are reserved but
+   never committed: the unowned hole is between LOW_RESERV_END and
+   HIGH_RESERV_BEGIN. Game-visible valid ranges exclude both guards. */
+#define DHD_SPLIT_LOW_END            0x3a000000ull
+#define DHD_SPLIT_LOW_RESERV_END     0x3a004000ull
+#define DHD_SPLIT_HIGH_RESERV_BEGIN  0x6fffc000ull
+#define DHD_SPLIT_HIGH_BEGIN         0x70000000ull
+#define DHD_SPLIT_HIGH_END           0x70e10000ull
 /* wasm-ld --stack-first places the shadow stack at [0, __stack_pointer) even
    with --global-base. host64_memory_commit_stack commits it above a reserved
    null/overflow page; it must end below the low RAM view (0x00400000). */

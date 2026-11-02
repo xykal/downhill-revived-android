@@ -10,6 +10,17 @@
 #if WASM_RT_USE_SEGUE || WABT_BIG_ENDIAN
 #error Host64 translation requires little-endian linear memory and Segue disabled
 #endif
+/* EXPERIMENTAL: requires a split-aware allocator and host-service audit before
+   use by an APK. The hole can contain unrelated Android mappings, so no wasm
+   access may ever form a dereferenceable pointer into it. Guest pointer VALUES
+   themselves remain unchanged. WABT's own size checks remain in force. */
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+#include "split_guest_range.h"
+static inline void host64_split_require(uint64_t address,uint64_t size) {
+    if (__builtin_expect(!host64_split_span_ok(address,size),0))
+        wasm_rt_trap(WASM_RT_TRAP_OOB);
+}
+#endif
 /* This is an allocator fact, not permission to ignore out-of-bounds accesses.
    Exposing it lets LLVM eliminate checks only for provably in-range addresses. */
 static inline uint64_t host64_memory_size(uint64_t size) {
@@ -32,6 +43,10 @@ static inline int host64_alias_crossing(uint64_t address,uint64_t size) {
    (it folds away at compile time) and otherwise call it out of line, on the rare paths. */
 static inline __attribute__((always_inline)) uint8_t *
 host64_memory_address_full(uint8_t *base, uint64_t address, uint64_t size) {
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+    host64_split_require(address,size);
+    if (!size) return base; /* empty span: don't form an address in the hole */
+#endif
     /* Fast path, the same result as the full test below: a span inside one 32-MiB window that
        is none of those five is neither folded nor crossing, so its host address is base +
        address. This covers canonical RAM (0x08000000) and the module's own data. A zero size
@@ -81,6 +96,10 @@ host64_memory_address_slow(uint8_t *base, uint64_t address, uint64_t size) {
 /* A span of any size (wasm2c's MEM_ADDR: memory.fill, data segments, memory.copy). */
 static inline uint8_t *host64_memory_address(uint8_t *base, uint64_t address,
                                              uint64_t size) {
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+    host64_split_require(address,size);
+    if (!size) return base;
+#endif
     if (__builtin_constant_p(address) && __builtin_constant_p(size))
         return host64_memory_address_full(base, address, size);
     uint64_t window = address >> 25;
@@ -105,6 +124,10 @@ static inline uint8_t *host64_memory_address(uint8_t *base, uint64_t address,
      offset >= 0x3a000000) or proves constant needs no test at run time. */
 static inline __attribute__((always_inline)) uint8_t *
 host64_access_address(uint8_t *base, uint64_t address, uint64_t size) {
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+    host64_split_require(address,size);
+    if (!size) return base;
+#endif
     if (!__builtin_constant_p(size) || size - 1 > 15)
         return host64_memory_address(base, address, size);
     if (__builtin_constant_p(address))
@@ -128,6 +151,13 @@ host64_access_address(uint8_t *base, uint64_t address, uint64_t size) {
    - a larger offset (none in this module) tests the address itself, as host64_access_address.
    The cold access gives the same result as host64_access_address, out of line. */
 static inline __attribute__((always_inline)) int host64_base_ok(uint32_t base, uint64_t offset) {
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+    /* A hot template directly dereferences base+address. Prove every possible
+       1..16 byte access is inside a mapped guest region; boundary accesses use
+       the cold path, which checks their actual width. */
+    if (offset > UINT64_MAX-(uint64_t)base ||
+        !host64_split_span_ok((uint64_t)base+offset,16)) return 0;
+#endif
     if (offset >= HOST64_VIEWS_END)
         return 1;
     uint64_t at = offset + 16 <= 0x2000000 ? base : base + offset;
@@ -135,6 +165,10 @@ static inline __attribute__((always_inline)) int host64_base_ok(uint32_t base, u
 }
 static inline __attribute__((always_inline)) uint8_t *
 host64_cold_address(uint8_t *base, uint64_t address, uint64_t size) {
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+    host64_split_require(address,size);
+    if (!size) return base;
+#endif
     if (__builtin_constant_p(address))
         return host64_memory_address_full(base, address, size);  /* folds at compile time */
     return host64_memory_address_slow(base, address, size);
@@ -145,6 +179,13 @@ host64_cold_address(uint8_t *base, uint64_t address, uint64_t size) {
 static inline void host64_memory_copy(uint8_t *dest, uint64_t d,
                                       const uint8_t *src, uint64_t s,
                                       uint64_t n) {
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(DHD_SPLIT_TEST_DISABLE_ACCESS_GUARD)
+    /* Zero-length wasm copies do not touch either endpoint. Their ordinary
+       wasm bounds checks are performed at the caller before reaching here. */
+    if (!n) return;
+    host64_split_require(d,n);
+    host64_split_require(s,n);
+#endif
     if (host64_alias_crossing(d,n) || host64_alias_crossing(s,n)) {
         uint8_t *temporary = (uint8_t *)malloc((size_t)n);
         if (!temporary) wasm_rt_trap(WASM_RT_TRAP_EXHAUSTION);

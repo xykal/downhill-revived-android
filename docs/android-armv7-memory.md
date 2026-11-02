@@ -40,12 +40,12 @@ bounds behavior, including crossing spans. Add negative and boundary tests on
 
 ## Experimental reservation prototype
 
-`split_reservation.c` is **not integrated with the game**. It plans aligned
+`split_reservation.c` is integrated only behind an experimental flag, not in the APK. It plans aligned
 pairs of free gaps, snapshots `/proc/self/maps`, and claims both intervals with
 non-destructive `mmap` hints, undoing the first claim if the second fails or
 lands elsewhere. A maps snapshot is not a lock; callers must retry after races.
-The prototype's range predicate is only a building block: it is not applied to
-wasm2c or native guest accesses.
+The planner's range predicate is a building block; the experimental wasm2c
+adapter and bridge use their own shared split-range predicate.
 
 On a synthetic fixture representing the player's reported two gaps, the
 planner finds base `0x059fc000`. Including 16 KiB safety reservations adjoining
@@ -58,7 +58,7 @@ Linux tests compare the gap planner to 10,000 brute-force random layouts, check
 range boundaries and actual `/proc/self/maps` exclusion, and verify that claim
 and rollback do not overwrite occupied low/high addresses or unmap a sentinel
 in the hole. CI cross-compiles the prototype for armv7. These tests do not
-validate wasm/native access protection, Android runtime behavior, game boot,
+validate every wasm/native access path, Android runtime behavior, game boot,
 content URI I/O, or rendering. The full audit and 32-bit runtime tests above are
 still required before enabling it or distributing an APK as fixed.
 
@@ -73,3 +73,23 @@ calling any decommit on failure. A mocked ownership/commit test and a real POSIX
 Linux x64. A negative control confirmed the prior armv7 code fails the module
 commit assertion. QEMU Linux is not Android; these do not prove phone boot.
 The allocator still cannot reserve a contiguous span on the reported phone.
+
+## Experimental allocator and generated-wasm guard
+
+`DHD_EXPERIMENTAL_SPLIT_MEMORY` now gates an experimental split allocator and
+wasm2c adapter. It is **not defined in the Android APK build**. It skips the
+unowned gap during mapping and teardown, reserves guard pages beside the gap,
+rejects host commits across it, and checks wasm hot, cold and bulk addresses
+before dereferencing them. The generated native bridge checks buffer ranges and
+bounds strings to their segment; a comprehensive native host import and
+`GUEST`/`GADDR` audit is still needed because direct calls can reach unrelated
+host mappings. Never enable it in an APK until this is fixed.
+
+`test_split_module.py` uses the real experimental allocator and a tiny WAT
+fixture compiled by WABT and prepared by the project's wasm2c adapter. In Linux
+x64 and under 32-bit ARM Linux QEMU it tests module startup, RAM aliasing,
+scratchpad, growth, scalar hot/cold/offset accesses, fill/copy, empty spans,
+rejected hole/boundary accesses, bridge buffers and strings, and cleanup. A real writable sentinel is mapped
+in the hole before module instantiation and checked after cleanup. A negative
+control deliberately disables the wasm guards and fails the hole-trap check.
+These are synthetic tests, not proof that Android or the full game boots.

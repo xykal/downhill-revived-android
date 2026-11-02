@@ -22,7 +22,14 @@
 
 uintptr_t guest_base;
 static wasm_rt_memory_t *owner;
-#if UINTPTR_MAX == 0xFFFFFFFFull
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY)
+/* The two guard pages and the unowned gap are explicit regions. The gap must
+   never be split, committed, mapped or released by this allocator. */
+static const uint64_t edges[] = {0,0x00400000,0x02000000,0x08000000,0x0a000000,
+    0x20400000,0x22000000,0x28000000,0x2a000000,0x30400000,0x32000000,
+    0x38000000,DHD_SPLIT_LOW_END,DHD_SPLIT_LOW_RESERV_END,
+    DHD_SPLIT_HIGH_RESERV_BEGIN,DHD_SPLIT_HIGH_BEGIN,DHD_SPLIT_HIGH_END};
+#elif UINTPTR_MAX == 0xFFFFFFFFull
 /* A 32-bit host (Android armeabi-v7a): wasm32 addresses are still uint32, but the whole span
    cannot be reserved — it is the process's entire address space — and a uint32 pointer plus a
    uint32 offset wraps, so guard pages cannot catch an out-of-bounds access anyway. The build
@@ -42,7 +49,7 @@ static const uint64_t edges[] = {0,0x00400000,0x02000000,0x08000000,0x0a000000,
     0x38000000,0x3a000000,0x100000000ull,0x200000000ull};
 #endif
 enum { REGIONS=sizeof edges/sizeof edges[0]-1 };
-#if UINTPTR_MAX == 0xFFFFFFFFull
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) || UINTPTR_MAX == 0xFFFFFFFFull
 /* 32-bit has no trailing 4-GiB guard region: its last region contains the
    scratchpad and module and MUST be prepared/committed like the others. */
 enum { ACTIVE_REGIONS=REGIONS };
@@ -50,10 +57,22 @@ enum { ACTIVE_REGIONS=REGIONS };
 /* The final 4-GiB region is the inaccessible wasm guard. */
 enum { ACTIVE_REGIONS=REGIONS-1 };
 #endif
+static int unowned(unsigned i) {
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    return edges[i]==DHD_SPLIT_LOW_RESERV_END && edges[i+1]==DHD_SPLIT_HIGH_RESERV_BEGIN;
+#else
+    (void)i; return 0;
+#endif
+}
 static int mirror(unsigned i) { return i==1 || i==3 || i==5 || i==7 || i==9 || i==11; }
 static uint64_t section_offset(unsigned i) { return edges[i]&0x01ffffff; }
 static int commit_range(uint64_t lo, uint64_t hi) {
     if (hi<lo || hi>edges[ACTIVE_REGIONS]) return 0;
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    /* The unowned gap AND its guard pages cannot be committed, including when
+       a requested range crosses a boundary. */
+    if (lo<hi && lo<DHD_SPLIT_HIGH_BEGIN && hi>DHD_SPLIT_LOW_END) return 0;
+#endif
     for (unsigned i=0;i<ACTIVE_REGIONS;i++) {
         uint64_t a=lo>edges[i]?lo:edges[i], b=hi<edges[i+1]?hi:edges[i+1];
         if (!mirror(i) && a<b && !os_commit(guest_base+a,b-a)) return 0;
@@ -91,8 +110,9 @@ void wasm_rt_allocate_memory(wasm_rt_memory_t *m,uint64_t initial,uint64_t max,
     if (!guest_base) guest_base=os_reserve();
     if (!guest_base) os_fail("reserve guest span");
     for (unsigned i=0;i<ACTIVE_REGIONS;i++)
-        if (!os_split(guest_base+edges[i],edges[i+1]-edges[i])) os_fail("split reservation");
+        if (!unowned(i) && !os_split(guest_base+edges[i],edges[i+1]-edges[i])) os_fail("split reservation");
     for (unsigned i=0;i<ACTIVE_REGIONS;i++) {
+        if (unowned(i)) continue;
         if (mirror(i)) {
             if (!os_map_ram(guest_base+edges[i],edges[i+1]-edges[i],section_offset(i)))
                 os_fail("RAM mirror");
@@ -119,6 +139,7 @@ uint64_t wasm_rt_grow_memory(wasm_rt_memory_t *m,uint64_t pages) {
 void wasm_rt_free_memory(wasm_rt_memory_t *m) {
     if (m!=owner) os_fail("free of non-owner");
     for (unsigned i=0;i<REGIONS;i++) {
+        if (unowned(i)) continue;  /* do not unmap Android's mappings in the hole */
         void *p=(void *)(uintptr_t)(guest_base+edges[i]);
         if (mirror(i)) {
             if (!os_unmap_view(p,edges[i+1]-edges[i])) os_fail("unmap RAM");
