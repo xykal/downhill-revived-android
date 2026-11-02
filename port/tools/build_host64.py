@@ -239,6 +239,13 @@ def main():
                      help='optimize with this profile (llvm-profdata merge of the .profraw files)')
     a = p.parse_args()
     t = TARGETS[a.target]
+    experimental_split = os.environ.get('DHD_EXPERIMENTAL_SPLIT_MEMORY') == '1'
+    if experimental_split and not t.bits32:
+        p.error('experimental split memory is restricted to android-armv7')
+    if experimental_split and a.host_library:
+        p.error('experimental split memory cannot reuse an unchecked host library')
+    if experimental_split:
+        print('WARNING: experimental split memory; not validated for release or phone gameplay', flush=True)
     if not a.fiber_test and not a.fake and not a.module:
         # no module named: build_wasm.py's output (port/tools/build.py builds both in order)
         default = ROOT / 'build' / 'wasm' / 'dhd_core.wasm'
@@ -343,6 +350,8 @@ def main():
         # wrapping pointer arithmetic defeats the fault route: WABT's software bounds checks instead,
         # whose traps reach the same host64_trap.
         defines = ['-DWASM_RT_STACK_DEPTH_COUNT=1', '-DWASM_RT_MAX_CALL_STACK_DEPTH=512', '-DWASM_RT_THREAD_LOCAL=']
+        if experimental_split:
+            defines += ['-DDHD_EXPERIMENTAL_SPLIT_MEMORY']
         if not t.bits32:
             defines += ['-DWASM_RT_MEMCHECK_GUARD_PAGES=1', '-DWASM_RT_SKIP_SIGNAL_RECOVERY=1']
         defines += ['-DHOST64_FAKE_MODULE=1'] if a.fake else ['-DWASM_RT_TRAP_HANDLER=host64_trap']
@@ -432,6 +441,8 @@ def main():
             run([a.llvm/'llvm-lib.exe', '/out:'+str(library), *host_objects] if t.windows else
                 [ar, 'rcs', library, *host_objects])
         sources = units + [rt/'wasm-rt-impl.c', work/'imports_gen.c'] + glue(t)
+        if experimental_split:
+            sources += [SOURCE/'split_reservation.c']
         with ThreadPoolExecutor(jobs) as pool:
             objects = list(pool.map(compile_one, sources))
         # rustc's list for the library (checked by rustgs against the target's allow-list)

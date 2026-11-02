@@ -40,7 +40,7 @@ bounds behavior, including crossing spans. Add negative and boundary tests on
 
 ## Experimental reservation prototype
 
-`split_reservation.c` is integrated only behind an experimental flag, not in the APK. It plans aligned
+`split_reservation.c` is integrated only behind an experimental flag, not in normal APK builds. It plans aligned
 pairs of free gaps, snapshots `/proc/self/maps`, and claims both intervals with
 non-destructive `mmap` hints, undoing the first claim if the second fails or
 lands elsewhere. A maps snapshot is not a lock; callers must retry after races.
@@ -77,7 +77,9 @@ The allocator still cannot reserve a contiguous span on the reported phone.
 ## Experimental allocator and generated-wasm guard
 
 `DHD_EXPERIMENTAL_SPLIT_MEMORY` now gates an experimental split allocator and
-wasm2c adapter. It is **not defined in the Android APK build**. It skips the
+wasm2c adapter. It is **not enabled by default** in the Android APK build; the
+explicit experimental workflow dispatch builds an unverified, separately named
+artifact for compile testing only. It skips the
 unowned gap during mapping and teardown, reserves guard pages beside the gap,
 rejects host commits across it, and checks wasm hot, cold and bulk addresses
 before dereferencing them. The generated native bridge checks buffer ranges and

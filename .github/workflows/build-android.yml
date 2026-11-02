@@ -3,7 +3,15 @@ name: android
 on:
   push:
   workflow_dispatch:
+    inputs:
+      experimental_split:
+        description: 'Experimental split memory (NOT a verified release)'
+        type: boolean
+        default: false
   repository_dispatch:
+
+env:
+  DHD_EXPERIMENTAL_SPLIT_MEMORY: ${{ inputs.experimental_split == true && '1' || '0' }}
 
 jobs:
   fixture:
@@ -184,6 +192,6 @@ jobs:
         run: python3 port/android/build_apk.py --abi armeabi-v7a --release
       - uses: actions/upload-artifact@v4
         with:
-          name: downhill-revived-armeabi-v7a-release
+          name: ${{ inputs.experimental_split == true && 'downhill-revived-armeabi-v7a-experimental-unverified' || 'downhill-revived-armeabi-v7a-release' }}
           path: build/android/*armeabi-v7a*.apk
           if-no-files-found: error
