@@ -106,13 +106,19 @@ int os_release(void *at,uint64_t size) {
 void os_backing_close(void) {
     close(ram_fd); ram_fd=-1;
 }
+/* Ignore signal-report I/O failures without triggering fortified libc's
+   warn_unused_result; this helper remains async-signal-safe. */
+static void write_ignoring_error(int fd,const void *data,size_t size) {
+    ssize_t result=write(fd,data,size);
+    (void)result;
+}
 static void write_hex(int fd,unsigned long long v,int width) {
     char digits[16]; int i=0;
     do { digits[i++]="0123456789abcdef"[v&15]; v>>=4; } while (v);
     while (i<width) digits[i++]='0';
     while (i--) {
         char c=digits[i];
-        (void)write(fd,&c,1);
+        write_ignoring_error(fd,&c,1);
     }
 }
 static void fault(int sig,siginfo_t *info,void *ctx) {
@@ -126,9 +132,9 @@ static void fault(int sig,siginfo_t *info,void *ctx) {
     }
     static const char head[]="host64 memory: access of uncommitted guest address 0x";
     static const char tail[]="\n";
-    (void)write(STDERR_FILENO,head,sizeof head-1);
+    write_ignoring_error(STDERR_FILENO,head,sizeof head-1);
     write_hex(STDERR_FILENO,(unsigned long long)(host-guest_base),9);
-    (void)write(STDERR_FILENO,tail,sizeof tail-1);
+    write_ignoring_error(STDERR_FILENO,tail,sizeof tail-1);
     /* Raw frames; names need -rdynamic, which the self-test link passes. */
     void *frames[24];
     int n=backtrace(frames,24);
