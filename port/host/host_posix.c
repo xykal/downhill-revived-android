@@ -172,7 +172,13 @@ int host_mem_protect(uint32_t at, uint32_t size, int protection)
 {
     /* Page-align the range the way the OS requires (its page: 16 KiB on Apple silicon and some
        Android devices); the caller's exact range keeps its protection inside it. */
-    uintptr_t page = os_page(), base = (uintptr_t)GUEST(at);
+    uintptr_t page = os_page();
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    /* A raw mprotect across the unowned gap could change Android's own
+       mappings. Check the entire OS-rounded range before using GUEST. */
+    if (!host64_split_protect_ok(at,size,page)) return 0;
+#endif
+    uintptr_t base = (uintptr_t)GUEST(at);
     uintptr_t lo = base & ~(page - 1), hi = (base + size + page - 1) & ~(page - 1);
     if (hi < base) return 0;
     return mprotect((void *)lo, hi - lo, protection == HOST_MEM_NOACCESS ? PROT_NONE : PROT_READ | PROT_WRITE) == 0;
@@ -195,7 +201,11 @@ static void guard_fault(int sig, siginfo_t *info, void *ctx)
 {
     uintptr_t host = (uintptr_t)info->si_addr;
     (void)ctx;
-    if (guard_armed && guard_on_fault && host >= guest_base && host - guest_base < 0x100000000ull) {
+    if (guard_armed && guard_on_fault && host >= guest_base && host - guest_base < 0x100000000ull
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+        && host64_split_span_ok(host-guest_base,1)
+#endif
+    ) {
         uint32_t at = (uint32_t)(host - guest_base), page = (uint32_t)os_page();
         if (guard_on_fault(at)) return; /* retry the access */
         for (uint32_t sub = at & ~(page - 1); page > 4096 && sub < (at & ~(page - 1)) + page; sub += 4096)

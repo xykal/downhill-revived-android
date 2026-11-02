@@ -19,8 +19,30 @@
 #include "../include/guest.h"
 #include "core.h"
 
+/* The full application provides this; the isolated fixture has no log mirror. */
+void host_log_drain(void) {}
 static uintptr_t base;
 static w2c_core core;
+static int bad_fault_callback(uint32_t address) {
+    (void)address;
+    _exit(42); /* The unrelated hole must never be offered to the guest. */
+}
+static void check_unrelated_fault(void *sentinel) {
+    pid_t child=fork();
+    assert(child>=0);
+    if (!child) {
+        struct rlimit no_core={0,0};
+        (void)setrlimit(RLIMIT_CORE,&no_core);
+        assert(host_fault_guard(bad_fault_callback));
+        assert(!mprotect(sentinel,0x4000,PROT_NONE));
+        volatile uint32_t word=*(volatile uint32_t *)sentinel;
+        (void)word;
+        _exit(0);
+    }
+    int status=0;
+    assert(waitpid(child,&status,0)==child);
+    assert(WIFSIGNALED(status) && WTERMSIG(status)==SIGSEGV);
+}
 static void check_native_guard(void) {
     assert(GUEST(0x08000000u)==(void *)(base+0x08000000u));
     pid_t child=fork();
@@ -81,7 +103,14 @@ int main(void) {
     assert(!host64_memory_commit(0x50000000u,0x4000));
     assert(!host64_memory_commit(0x39fff000u,0x2000));
     assert(*(volatile uint32_t *)sentinel==0xa55aa55a);
+    assert(!host_mem_protect(0x50000000u,4,HOST_MEM_NOACCESS));
+    assert(!host_mem_protect(0x39fffffeu,4,HOST_MEM_NOACCESS));
+    assert(!host_mem_protect(0x08000000u,0x48000004u,HOST_MEM_NOACCESS));
+    assert(host_mem_protect(0x08000000u,0x4000,HOST_MEM_NOACCESS));
+    assert(host_mem_protect(0x08000000u,0x4000,HOST_MEM_READWRITE));
+    assert(*(volatile uint32_t *)sentinel==0xa55aa55a);
     check_native_guard();
+    check_unrelated_fault(sentinel);
     w2c_core_store(&core,0x08000000,0x12345678);
     assert(w2c_core_load(&core,0x08000000)==0x12345678);
     assert(w2c_core_load(&core,0x38000000)==0x12345678);

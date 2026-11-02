@@ -86,6 +86,9 @@ jobs:
               -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
               -c "port/host64/$source" -o "/tmp/$source.armv7.o"
           done
+          "$ndkcc" -std=gnu11 -DDHD_EXPERIMENTAL_SPLIT_MEMORY -D_FILE_OFFSET_BITS=64 \
+            -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
+            -c port/host/host_posix.c -o /tmp/host_posix.armv7.o
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Prime cargo registry (rustgs builds --locked --offline)

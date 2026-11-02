@@ -35,7 +35,7 @@ def main():
         prepared = (out/'core.c').read_text()
         assert 'host64_base_ok(' in prepared and 'host64_memory_copy(' in prepared
         cc = 'arm-linux-gnueabihf-gcc' if a.arm else 'cc'
-        flags = ['-std=gnu11', '-O2', '-Wno-unused-function',
+        flags = ['-std=gnu11', '-O2', '-ffunction-sections', '-fdata-sections', '-Wno-unused-function',
                  '-D__builtin_assume(x)=((void)0)', '-DWASM_RT_USE_SEGUE=0',
                  '-DWASM_RT_MEMCHECK_GUARD_PAGES=0', '-DWASM_RT_MEMCHECK_BOUNDS_CHECK=1',
                  '-I'+str(a.wabt/'include'), '-I'+str(rt), '-I'+str(HOST), '-I'+str(out)]
@@ -43,15 +43,16 @@ def main():
             flags += ['-static', '-march=armv7-a', '-mfpu=vfpv3-d16']
         sources = [out/'core.c', rt/'wasm-rt-impl.c', HOST/'split_reservation.c',
                    HOST/'guest_memory.c', HOST/'guest_memory_posix.c', HOST/'bridge.c',
+                   ROOT/'port/host/host_posix.c',
                    HOST/'test_split_module.c']
         exe = out/'split-test'
-        run([cc, *flags, '-DDHD_EXPERIMENTAL_SPLIT_MEMORY', *sources, '-lm', '-o', exe])
+        run([cc, *flags, '-DDHD_EXPERIMENTAL_SPLIT_MEMORY', *sources, '-Wl,--gc-sections', '-pthread', '-ldl', '-lm', '-o', exe])
         prefix = ['qemu-arm'] if a.arm else []
         run([*prefix, exe], timeout=30)
         if a.negative_control:
             unsafe = out/'split-test-unsafe'
             run([cc, *flags, '-DDHD_EXPERIMENTAL_SPLIT_MEMORY',
-                 '-DDHD_SPLIT_TEST_DISABLE_ACCESS_GUARD', *sources, '-lm', '-o', unsafe])
+                 '-DDHD_SPLIT_TEST_DISABLE_ACCESS_GUARD', *sources, '-Wl,--gc-sections', '-pthread', '-ldl', '-lm', '-o', unsafe])
             def no_core():
                 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
             result = subprocess.run([*prefix, str(unsafe)], capture_output=True, text=True,

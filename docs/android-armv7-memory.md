@@ -96,3 +96,9 @@ rejection in a child process, and cleanup. A real writable sentinel is mapped
 in the hole before module instantiation and checked after cleanup. A negative
 control deliberately disables the wasm guards and fails the hole-trap check.
 These are synthetic tests, not proof that Android or the full game boots.
+
+The experimental POSIX host now rejects page-protection requests that span the
+unowned hole and declines to offer faults in the hole to the guest fault
+callback. The generated-module fixture verifies these using a writable sentinel
+and a separate child faulting in that sentinel. This does not replace the
+remaining native pointer-length and `GADDR` audit.
