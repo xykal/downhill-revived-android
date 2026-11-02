@@ -81,15 +81,16 @@ wasm2c adapter. It is **not defined in the Android APK build**. It skips the
 unowned gap during mapping and teardown, reserves guard pages beside the gap,
 rejects host commits across it, and checks wasm hot, cold and bulk addresses
 before dereferencing them. The generated native bridge checks buffer ranges and
-bounds strings to their segment; a comprehensive native host import and
-`GUEST`/`GADDR` audit is still needed because direct calls can reach unrelated
-host mappings. Never enable it in an APK until this is fixed.
+bounds strings to their segment. Native `GUEST` rejects starting addresses in the
+hole on any thread, but it checks only one byte, not later pointer arithmetic or
+buffer lengths. `GADDR` and native host imports still require a full audit. Never enable it in an APK until this is fixed.
 
 `test_split_module.py` uses the real experimental allocator and a tiny WAT
 fixture compiled by WABT and prepared by the project's wasm2c adapter. In Linux
 x64 and under 32-bit ARM Linux QEMU it tests module startup, RAM aliasing,
 scratchpad, growth, scalar hot/cold/offset accesses, fill/copy, empty spans,
-rejected hole/boundary accesses, bridge buffers and strings, and cleanup. A real writable sentinel is mapped
+rejected hole/boundary accesses, bridge buffers and strings, native `GUEST` hole
+rejection in a child process, and cleanup. A real writable sentinel is mapped
 in the hole before module instantiation and checked after cleanup. A negative
 control deliberately disables the wasm guards and fails the hole-trap check.
 These are synthetic tests, not proof that Android or the full game boots.

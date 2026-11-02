@@ -4,6 +4,10 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <signal.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -12,10 +16,25 @@
 #include "wasm-rt-impl.h"
 #include "core_host.h"
 #include "bridge.h"
+#include "../include/guest.h"
 #include "core.h"
 
 static uintptr_t base;
 static w2c_core core;
+static void check_native_guard(void) {
+    assert(GUEST(0x08000000u)==(void *)(base+0x08000000u));
+    pid_t child=fork();
+    assert(child>=0);
+    if (!child) {
+        struct rlimit no_core={0,0};
+        (void)setrlimit(RLIMIT_CORE,&no_core);
+        (void)GUEST(0x50000000u);
+        _exit(0);
+    }
+    int status=0;
+    assert(waitpid(child,&status,0)==child);
+    assert(WIFSIGNALED(status) && WTERMSIG(status)==SIGABRT);
+}
 static void expect_trap(unsigned operation) {
     wasm_rt_trap_t trap=WASM_RT_SETJMP(g_wasm_rt_jmp_buf);
     if (trap==WASM_RT_TRAP_NONE) {
@@ -62,6 +81,7 @@ int main(void) {
     assert(!host64_memory_commit(0x50000000u,0x4000));
     assert(!host64_memory_commit(0x39fff000u,0x2000));
     assert(*(volatile uint32_t *)sentinel==0xa55aa55a);
+    check_native_guard();
     w2c_core_store(&core,0x08000000,0x12345678);
     assert(w2c_core_load(&core,0x08000000)==0x12345678);
     assert(w2c_core_load(&core,0x38000000)==0x12345678);

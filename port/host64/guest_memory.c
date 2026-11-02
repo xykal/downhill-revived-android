@@ -21,6 +21,13 @@
 #include "guest_memory_os.h"
 
 uintptr_t guest_base;
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+/* Unlike wasm2c's trap path, this may run on an arbitrary host thread. */
+void host64_bad_guest_address(uint32_t address) {
+    fprintf(stderr,"host64 memory: native guest address 0x%08x is outside split regions\n",address);
+    abort();
+}
+#endif
 static wasm_rt_memory_t *owner;
 #if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY)
 /* The two guard pages and the unowned gap are explicit regions. The gap must

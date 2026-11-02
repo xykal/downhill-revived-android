@@ -28,8 +28,31 @@ extern uintptr_t guest_base;
 #define GUEST_BASE ((uintptr_t)0)
 #endif
 
-/* Host pointer of a 32-bit guest address. */
+/* Host pointer of a 32-bit guest address. In the experimental split build,
+   native host services must not even form a pointer directly into the unowned
+   hole. This checks the first byte only; consumers still need explicit span
+   checks before indexing or bulk I/O. Fault by abort rather than a wasm trap:
+   native services may run on an OS thread without a wasm unwind target. */
+#if defined(DHD_EXPERIMENTAL_SPLIT_MEMORY) && !defined(__wasm__)
+#include "../host64/split_guest_range.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noreturn,cold))
+#endif
+void host64_bad_guest_address(uint32_t address);
+#ifdef __cplusplus
+}
+#endif
+static inline void *host64_checked_guest_start(uint32_t address) {
+    if (!host64_split_span_ok(address,1)) host64_bad_guest_address(address);
+    return (void *)(GUEST_BASE + (uintptr_t)address);
+}
+#define GUEST(addr) host64_checked_guest_start((uint32_t)(addr))
+#else
 #define GUEST(addr) ((void *)(GUEST_BASE + (uintptr_t)(uint32_t)(addr)))
+#endif
 
 /* Guest address of a host pointer (or of a host address held in an integer). The result is
    32 bits: on a 64-bit host it is only meaningful for pointers that point into guest memory. */
