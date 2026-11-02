@@ -54,7 +54,7 @@ jobs:
             -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
             port/host64/guest_memory.c port/host64/test_reservation.c -o /tmp/test-guest-reservation
           /tmp/test-guest-reservation
-      - name: Split reservation prototype tests (not wired into APK)
+      - name: Split reservation planner tests (experimental opt-in)
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror \
             port/host64/split_reservation.c port/host64/test_split_reservation.c -o /tmp/test-split
@@ -81,8 +81,9 @@ jobs:
           python3 port/tools/test_split_module.py --wabt "$HOME/tools/wabt-1.0.42" --simde "$HOME/simde" --clang --negative-control
           python3 port/tools/test_split_module.py --wabt "$HOME/tools/wabt-1.0.42" --simde "$HOME/simde" --arm --negative-control
           python3 port/tools/test_split_module.py --wabt "$HOME/tools/wabt-1.0.42" --simde "$HOME/simde" --arm --clang --negative-control
+          python3 port/tools/test_fiber_arm.py --wabt "$HOME/tools/wabt-1.0.42" --negative-control
           ndkcc="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang"
-          for source in guest_memory.c guest_memory_posix.c bridge.c test_split_access.c; do
+          for source in guest_memory.c guest_memory_posix.c bridge.c test_split_access.c fiber_arm32.c fp_mode.c; do
             "$ndkcc" -std=gnu11 -DDHD_EXPERIMENTAL_SPLIT_MEMORY -D_FILE_OFFSET_BITS=64 \
               -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
               -c "port/host64/$source" -o "/tmp/$source.armv7.o"

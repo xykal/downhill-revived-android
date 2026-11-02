@@ -24,9 +24,7 @@ void host_fp_mode(int mode) {
         uint32_t fpscr=(3u<<22)|(1u<<24);
         __asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr) : "memory");
     } else {
-        uint32_t fpscr;
-        __asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
-        fpscr&=0x0FFFFFFFu;  /* IEEE: round to nearest, no FZ, status flags clear */
+        uint32_t fpscr=0;  /* IEEE: round to nearest, no FZ, status flags clear. */
         __asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr) : "memory");
     }
 }

@@ -40,7 +40,9 @@ static uint64_t fp_control(void) {
 #elif defined(__aarch64__)
     uint64_t f; __asm__ volatile("mrs %0, fpcr" : "=r"(f)); return f;
 #elif defined(__arm__)
-    uint32_t f; __asm__ volatile("vmrs %0, fpscr" : "=r"(f)); return f & ~63u;
+    /* NZCV, QC and exception status are not FP control and may change during
+       ordinary C floating-point comparisons between reads of FPSCR. */
+    uint32_t f; __asm__ volatile("vmrs %0, fpscr" : "=r"(f)); return f & 0x07ffff00u;
 #else
 #error Implement fp_control for this architecture
 #endif
@@ -127,14 +129,24 @@ int main(int argc,char **argv) {
         for (unsigned i=0;i<10;i++) reals[id][i]=100.0*id+i+0.5;
     }
     wasm_rt_memory_t memory={0};
-    wasm_rt_allocate_memory(&memory,32768,32770,false,65536);
+    /* Match the game's initial wasm span; 32768 pages exceed the armv7
+       reservation and made the Android-target fixture impossible to run. */
+    wasm_rt_allocate_memory(&memory,0x70e0,0x70e1,false,65536);
     host64_fiber_bind(&stack_pointer); root=host_fiber_main(); CHECK(root==65);
     for (unsigned id=1;id<=FIBERS;id++) {
         fibers[id]=host_fiber_create(worker,(void *)(uintptr_t)id); CHECK(fibers[id]==id);
         CHECK(host64_fiber_stack_top(fibers[id])==0x06000000+id*0x40000);
     }
     if (mode) { host_fiber_switch(fibers[1]); return 1; }
+#if defined(__arm__)
+    /* IEEE mode must undo both EE round-toward-zero and flush-to-zero. */
+    host_fp_mode(HOST_FP_EE);
+    CHECK((fp_control() & ((3u<<22)|(1u<<24))) == ((3u<<22)|(1u<<24)));
     host_fp_mode(0);
+    CHECK((fp_control() & ((3u<<22)|(1u<<24))) == 0);
+#else
+    host_fp_mode(0);
+#endif
     uint64_t fp=fp_control();
     for (unsigned round=0;round<=ROUNDS;round++) {
         wasm_rt_call_stack_depth=7; stack_pointer=0x100000-round;

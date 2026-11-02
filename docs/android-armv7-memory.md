@@ -113,3 +113,24 @@ floor after a failed non-destructive claim (up to 32 attempts). Android logs
 whether the early split attempt was ready and logs the base of a successful split
 reservation. Full native span checking remains unfinished; the experimental APK
 may abort, crash, or corrupt host state on a bad native access.
+
+## ARM32 fiber-register defect (experimental test after b3eb417)
+
+The device log reached disc data and widescreen initialization, then faulted at
+PC zero on the game thread. That is not sufficient to prove the precise cause.
+However, inspection identified an actual ARM32 fiber-switch defect: the VFP
+save/load used the start of the stack frame instead of the documented offset
+40, overwriting saved integer registers and the return address when saving.
+The experimental ARM32 adapter now uses the correct non-overlapping slots.
+The old selftest could not run with the 32-bit allocator because its initial
+wasm memory exceeded that allocator's limit. It now uses the game's span.
+Its ARM FPSCR test masks volatile condition/status flags and separately checks
+that switching back to IEEE mode clears the EE rounding and flush-to-zero bits;
+the old ARM reset had left those bits set and is fixed as well.
+
+`test_fiber_arm.py` runs real fiber switches and guarded stack faults on ARM
+Linux QEMU using optimized Clang and GCC in both Thumb and ARM modes. All four
+pass 150 switches, multiple fibers, saved registers and controls; deliberate
+old-code regressions of the fiber frame and IEEE reset fail the test. These are
+not the Android APK or actual device, and do not establish game boot or complete
+native pointer safety. An Android / real-device test is still necessary.
