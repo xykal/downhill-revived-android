@@ -37,3 +37,27 @@ growth, cleanup and fault handling. Preserve RAM mirror aliasing and wasm
 bounds behavior, including crossing spans. Add negative and boundary tests on
 32-bit plus real-device testing before publishing an APK. A passing build or a
 64-bit mock test is not evidence of phone boot or graphics compatibility.
+
+## Experimental reservation prototype
+
+`split_reservation.c` is **not integrated with the game**. It plans aligned
+pairs of free gaps, snapshots `/proc/self/maps`, and claims both intervals with
+non-destructive `mmap` hints, undoing the first claim if the second fails or
+lands elsewhere. A maps snapshot is not a lock; callers must retry after races.
+The prototype's range predicate is only a building block: it is not applied to
+wasm2c or native guest accesses.
+
+On a synthetic fixture representing the player's reported two gaps, the
+planner finds base `0x059fc000`. Including 16 KiB safety reservations adjoining
+both sides of the omitted hole, the proposed low reservation is
+`[base, base + 0x3a004000)` and the high reservation is
+`[base + 0x6fffc000, base + 0x70e10000)`. This shows arithmetic feasibility
+for that one captured layout, not that `mmap` will succeed on the actual phone.
+
+Linux tests compare the gap planner to 10,000 brute-force random layouts, check
+range boundaries and actual `/proc/self/maps` exclusion, and verify that claim
+and rollback do not overwrite occupied low/high addresses or unmap a sentinel
+in the hole. CI cross-compiles the prototype for armv7. These tests do not
+validate wasm/native access protection, Android runtime behavior, game boot,
+content URI I/O, or rendering. The full audit and 32-bit runtime tests above are
+still required before enabling it or distributing an APK as fixed.

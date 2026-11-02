@@ -46,6 +46,13 @@ jobs:
             -I "$HOME/tools/wabt-1.0.42/include" -I port/host64 \
             port/host64/guest_memory.c port/host64/test_reservation.c -o /tmp/test-guest-reservation
           /tmp/test-guest-reservation
+      - name: Split reservation prototype tests (not wired into APK)
+        run: |
+          cc -std=gnu11 -O2 -Wall -Wextra -Werror \
+            port/host64/split_reservation.c port/host64/test_split_reservation.c -o /tmp/test-split
+          /tmp/test-split
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang" \
+            -std=gnu11 -Wall -Wextra -Werror -c port/host64/split_reservation.c -o /tmp/split-armv7.o
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Prime cargo registry (rustgs builds --locked --offline)
