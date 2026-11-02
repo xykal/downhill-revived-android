@@ -1,4 +1,4 @@
-# rustc --print native-static-libs for the armv7-linux-androideabi static library (armeabi-v7a
-# build; same set rustc prints for aarch64-linux-android, finding 091). The allow-list for
-# rustgs.py / check_rust_lib.py.
--ldl -llog -lunwind -lm -lc
+# rustc --print native-static-libs for the armv7-linux-androideabi static library.
+# GLES pulls in the Android NDK window/EGL support and therefore libandroid;
+# build_host64.py already links -landroid. Allow-list for rustgs.py/check_rust_lib.py.
+-ldl -llog -lunwind -lm -lc -landroid
