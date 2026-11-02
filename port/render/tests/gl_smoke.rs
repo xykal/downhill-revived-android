@@ -26,6 +26,10 @@ fn gles_native_startup_and_depth_load() {
     let _objects = Objects::create(gpu, false).expect("native renderer objects on GL");
     let _native = dhd_render::native::Native::create(gpu, 0).expect("native startup and probe pipelines on GL");
     check_depth_load(gpu);
+    check_nested_struct_zero_init(gpu);
+    for key in 0..8 {
+        dhd_render::exact::pipelines::Pipelines::create(gpu, key).unwrap_or_else(|e| panic!("exact key {key}: {e}"));
+    }
 }
 
 fn check_depth_load(gpu: &Gpu) {
@@ -94,4 +98,54 @@ fn main() {
         drop(mapped);
         read.unmap();
     }
+}
+
+fn check_nested_struct_zero_init(gpu: &Gpu) {
+    let d = &gpu.device;
+    let result = d.create_buffer(&wgpu::BufferDescriptor {
+        label: None, size: 8, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false,
+    });
+    let read = d.create_buffer(&wgpu::BufferDescriptor {
+        label: None, size: 8, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false,
+    });
+    let module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("nested zero-init test"), source: wgpu::ShaderSource::Wgsl(r#"
+struct Child { v: vec4<u32>, n: i32 }
+struct Outer { a: array<Child, 2>, b: array<vec4<u32>, 3>, f: f32 }
+@group(0) @binding(0) var<storage, read_write> output: array<u32>;
+@compute @workgroup_size(1)
+fn main() {
+    var zero: Outer;
+    output[0] = zero.a[0].v.x | zero.a[1].v.w | u32(zero.a[0].n) | u32(zero.a[1].n)
+        | zero.b[0].x | zero.b[1].y | zero.b[2].z | bitcast<u32>(zero.f);
+    output[1] = 0xCAFECAFEu;
+}
+"#.into()),
+    });
+    let pipe = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: None, layout: None, module: &module, entry_point: Some("main"),
+        compilation_options: Default::default(), cache: None,
+    });
+    let group = d.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None, layout: &pipe.get_bind_group_layout(0),
+        entries: &[wgpu::BindGroupEntry { binding: 0, resource: result.as_entire_binding() }],
+    });
+    let mut encoder = d.create_command_encoder(&Default::default());
+    {
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&pipe);
+        pass.set_bind_group(0, &group, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&result, 0, &read, 0, 8);
+    gpu.queue.submit([encoder.finish()]);
+    let (tx, rx) = std::sync::mpsc::channel();
+    read.slice(..).map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
+    d.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    rx.recv().unwrap().unwrap();
+    let bytes = read.slice(..).get_mapped_range();
+    assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 0);
+    assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 0xCAFECAFE);
+    drop(bytes);
+    read.unmap();
 }

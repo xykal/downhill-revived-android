@@ -209,6 +209,20 @@ impl super::Device {
             Ok(raw)
         } else {
             log::error!("\tShader compilation failed: {msg}");
+            // PowerVR and Mesa typically report `ERROR: 0:123: ...`. Log a
+            // bounded source excerpt on failure so the offending translation
+            // can be diagnosed from the phone without dumping whole shaders.
+            for report in msg.lines().take(4) {
+                let fields: Vec<_> = report.split(':').map(str::trim).collect();
+                if let Some(line_no) = fields.windows(2).find_map(|w| {
+                    (w[0] == "0").then(|| w[1].parse::<usize>().ok()).flatten()
+                }).filter(|&n| n > 0) {
+                    for (idx, line) in shader.lines().enumerate().skip(line_no.saturating_sub(2)).take(3) {
+                        let snippet: String = line.chars().take(512).collect();
+                        log::error!("\tGLSL {}: {}", idx + 1, snippet);
+                    }
+                }
+            }
             unsafe { gl.delete_shader(raw) };
             Err(crate::PipelineError::Linkage(
                 map_naga_stage(naga_stage),

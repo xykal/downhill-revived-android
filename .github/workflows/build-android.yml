@@ -102,7 +102,7 @@ jobs:
           sudo apt-get install -y -qq libegl1 libgles2 libgl1-mesa-dri
           cd port/render
           LIBGL_ALWAYS_SOFTWARE=1 DHD_TEST_FORCE_GLES=1 cargo test --locked --offline \
-            --features native,gles-smoke --test gl_smoke -- --nocapture
+            --features native,gles-smoke --test gl_smoke --test glsl_raster_regression -- --nocapture
       - name: Fixture link (armeabi-v7a)
         run: python3 port/tools/build_host64.py --target android-armv7 --fake --wasi "$WASI_SDK" --jobs 4
       - name: Fiber selftest binary

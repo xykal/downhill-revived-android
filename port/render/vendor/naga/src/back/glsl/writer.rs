@@ -1383,8 +1383,21 @@ impl<'a, W: Write> Writer<'a, W> {
             if let TypeInner::Array { base, size, .. } = self.module.types[local.ty].inner {
                 self.write_array_size(base, size)?;
             }
+            // Some PowerVR GLES drivers reject a struct constructor containing
+            // array constructors (e.g. Primitive(uvec4[3](...), ...)). Preserve
+            // WGSL's zero-initialization with individual member assignments.
+            let split_init = self.options.version.is_es()
+                && local.init.is_none()
+                && matches!(self.module.types[local.ty].inner, TypeInner::Struct { .. })
+                && is_value_init_supported(self.module, local.ty)
+                && self.contains_array(local.ty);
             // Write the local initializer if needed
-            if let Some(init) = local.init {
+            if split_init {
+                writeln!(self.out, ";")?;
+                let name = self.names[&ctx.name_key(handle)].clone();
+                self.write_split_zero_init(local.ty, &name)?;
+                continue;
+            } else if let Some(init) = local.init {
                 // Put the equal signal only if there's a initializer
                 // The leading and trailing spaces aren't needed but help with readability
                 write!(self.out, " = ")?;
@@ -4325,6 +4338,43 @@ impl<'a, W: Write> Writer<'a, W> {
         writeln!(self.out, ";")?;
         self.named_expressions.insert(named, name);
 
+        Ok(())
+    }
+
+    // GLES compatibility: split nested array/struct initialization into leaf
+    // stores instead of one struct constructor with nested array constructors.
+    // This is only called for types accepted by is_value_init_supported.
+    fn contains_array(&self, ty: Handle<crate::Type>) -> bool {
+        match &self.module.types[ty].inner {
+            TypeInner::Array { .. } => true,
+            TypeInner::Struct { members, .. } => members.iter().any(|m| self.contains_array(m.ty)),
+            _ => false,
+        }
+    }
+
+    fn write_split_zero_init(&mut self, ty: Handle<crate::Type>, target: &str) -> BackendResult {
+        match self.module.types[ty].inner.clone() {
+            TypeInner::Array { base, size, .. } => {
+                let count = match size.resolve(self.module.to_ctx())? {
+                    proc::IndexableLength::Known(count) => count,
+                    proc::IndexableLength::Dynamic => unreachable!("local init must be sized"),
+                };
+                for index in 0..count {
+                    self.write_split_zero_init(base, &format!("{target}[{index}]"))?;
+                }
+            }
+            TypeInner::Struct { members, .. } => {
+                for (index, member) in members.iter().enumerate() {
+                    let field = &self.names[&NameKey::StructMember(ty, index as u32)];
+                    self.write_split_zero_init(member.ty, &format!("{target}.{field}"))?;
+                }
+            }
+            _ => {
+                write!(self.out, "{}{} = ", back::INDENT, target)?;
+                self.write_zero_init_value(ty)?;
+                writeln!(self.out, ";")?;
+            }
+        }
         Ok(())
     }
 
