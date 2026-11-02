@@ -3,6 +3,8 @@ public final class TouchPadModelTest {
     private static void check(boolean x,String message){if(!x)throw new AssertionError(message);}
     public static void main(String[] args){
         TouchPadModel m=new TouchPadModel(); m.resize(1600,720);
+        check(m.dpadX-.17f*m.u>=0,"D-pad visible");
+        check(m.faceX+m.faceOffset+m.buttonR<=m.w,"circle button visible");
         check(m.down(1,m.leftX,m.leftY,true)==TouchPadModel.LEFT_STICK,"left stick capture");
         m.move(1,m.leftX+m.stickR,m.leftY); TouchPadModel.State s=m.state();
         check(s.lx>=254 && s.ly==128 && s.active==1,"analog right");
