@@ -79,18 +79,20 @@ The allocator still cannot reserve a contiguous span on the reported phone.
 `DHD_EXPERIMENTAL_SPLIT_MEMORY` now gates an experimental split allocator and
 wasm2c adapter. It is **not enabled by default** in the Android APK build; the
 explicit experimental workflow dispatch builds an unverified, separately named
-artifact for compile testing only. It skips the
+artifact for testing only. It skips the
 unowned gap during mapping and teardown, reserves guard pages beside the gap,
 rejects host commits across it, and checks wasm hot, cold and bulk addresses
 before dereferencing them. The generated native bridge checks buffer ranges and
 bounds strings to their segment. Native `GUEST` rejects starting addresses in the
 hole on any thread, but it checks only one byte, not later pointer arithmetic or
-buffer lengths. `GADDR` and native host imports still require a full audit. Never enable it in an APK until this is fixed.
+buffer lengths. `GADDR` and native host imports still require a full audit. Never label it a
+verified or safe fix until the audit and device testing are complete.
 
 `test_split_module.py` uses the real experimental allocator and a tiny WAT
 fixture compiled by WABT and prepared by the project's wasm2c adapter. In Linux
 x64 and under 32-bit ARM Linux QEMU it tests module startup, RAM aliasing,
-scratchpad, growth, scalar hot/cold/offset accesses, fill/copy, empty spans,
+scratchpad, growth, scalar hot/cold/offset accesses, SIMD v128 load/store,
+fill/copy, empty spans,
 rejected hole/boundary accesses, bridge buffers and strings, native `GUEST` hole
 rejection in a child process, and cleanup. A real writable sentinel is mapped
 in the hole before module instantiation and checked after cleanup. A negative
@@ -102,3 +104,12 @@ unowned hole and declines to offer faults in the hole to the guest fault
 callback. The generated-module fixture verifies these using a writable sentinel
 and a separate child faulting in that sentinel. This does not replace the
 remaining native pointer-length and `GADDR` audit.
+
+The fixture runs with optimized native Clang and 32-bit ARM Linux GCC and Clang
+under QEMU, including a guard-disabled negative control. This exercises Clang's
+real `__builtin_assume` at `-O3` as well as SIMD via SIMDe, but is not a real
+Android test. Reservation takes fresh map snapshots and advances its candidate
+floor after a failed non-destructive claim (up to 32 attempts). Android logs
+whether the early split attempt was ready and logs the base of a successful split
+reservation. Full native span checking remains unfinished; the experimental APK
+may abort, crash, or corrupt host state on a bad native access.

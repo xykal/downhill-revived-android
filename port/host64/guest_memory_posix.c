@@ -71,11 +71,16 @@ uintptr_t os_reserve(void) {
     static DhdAddressGap gaps[4096];
     const DhdSplitLayout layout={DHD_SPLIT_LOW_RESERV_END,DHD_SPLIT_HIGH_RESERV_BEGIN,
         DHD_SPLIT_HIGH_END-DHD_SPLIT_HIGH_RESERV_BEGIN,HOST64_PAGE};
-    for (unsigned attempt=0;attempt<8;attempt++) {
+    uint64_t floor=0x10000;
+    for (unsigned attempt=0;attempt<32;attempt++) {
         size_t n=0; uint64_t base=0;
-        if (!dhd_split_read_gaps(gaps,4096,&n,0x10000,0xffff0000) ||
+        if (!dhd_split_read_gaps(gaps,4096,&n,floor,0xffff0000) ||
             !dhd_split_find(gaps,n,layout,&base)) break;
         if (dhd_split_claim((uintptr_t)base,layout)) return (uintptr_t)base;
+        /* Do not repeatedly select an unusable hint when mmap declines it or
+           another thread races us. A fresh snapshot starts at the next aligned
+           address; the claim API has already undone its temporary mappings. */
+        floor=base+HOST64_PAGE;
     }
     fprintf(stderr,"host64 memory: experimental split reservation failed\n");
     close(ram_fd); ram_fd=-1; return 0;

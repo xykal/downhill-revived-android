@@ -18,9 +18,13 @@ static void check_plan(void) {
     assert(base+l.high_offset>=gaps[1].begin);
     assert(base+l.high_offset+l.high_size<=gaps[1].end);
     assert(!dhd_split_find(gaps,1,l,&base));
+    printf("sample map: candidate base %#llx, both segments fit\n",(unsigned long long)base);
+    /* After a failed attempt, a new floor must select a different candidate. */
+    gaps[0].begin=0x05a00000;
+    assert(dhd_split_find(gaps,2,l,&base));
+    assert(base==0x05a00000);
     assert(!dhd_split_find(gaps,2,(DhdSplitLayout){1,0,1,1},&base));
     assert(!dhd_split_find(gaps,2,(DhdSplitLayout){0x4000,0x7000,0x4000,0x3000},&base));
-    printf("sample map: candidate base 0x%llx, both segments fit\n",(unsigned long long)base);
 }
 static void check_range(void) {
     DhdSplitLayout l={0x3a000000,0x70000000,0x00e10000,0x4000};

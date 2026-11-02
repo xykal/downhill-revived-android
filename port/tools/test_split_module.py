@@ -23,7 +23,9 @@ def run(args, **kwargs):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--wabt', type=Path, required=True)
+    p.add_argument('--simde', type=Path, required=True)
     p.add_argument('--arm', action='store_true')
+    p.add_argument('--clang', action='store_true', help='native Clang, with real __builtin_assume')
     p.add_argument('--negative-control', action='store_true')
     a = p.parse_args()
     rt = a.wabt / 'share/wabt/wasm2c'
@@ -34,13 +36,17 @@ def main():
         prepare(out/'core.c')
         prepared = (out/'core.c').read_text()
         assert 'host64_base_ok(' in prepared and 'host64_memory_copy(' in prepared
-        cc = 'arm-linux-gnueabihf-gcc' if a.arm else 'cc'
-        flags = ['-std=gnu11', '-O2', '-ffunction-sections', '-fdata-sections', '-Wno-unused-function',
-                 '-D__builtin_assume(x)=((void)0)', '-DWASM_RT_USE_SEGUE=0',
+        cc = 'clang' if a.clang else ('arm-linux-gnueabihf-gcc' if a.arm else 'cc')
+        flags = ['-std=gnu11', '-O3', '-fwrapv', '-fno-strict-aliasing', '-ffunction-sections',
+                 '-fdata-sections', '-Wno-unused-function', '-DWASM_RT_USE_SEGUE=0',
                  '-DWASM_RT_MEMCHECK_GUARD_PAGES=0', '-DWASM_RT_MEMCHECK_BOUNDS_CHECK=1',
-                 '-I'+str(a.wabt/'include'), '-I'+str(rt), '-I'+str(HOST), '-I'+str(out)]
+                 '-I'+str(a.wabt/'include'), '-I'+str(rt), '-I'+str(HOST), '-I'+str(out), '-I'+str(a.simde)]
+        if not a.clang:
+            flags += ['-D__builtin_assume(x)=((void)0)']
         if a.arm:
             flags += ['-static', '-march=armv7-a', '-mfpu=vfpv3-d16']
+            if a.clang:
+                flags += ['--target=arm-linux-gnueabihf', '--gcc-toolchain=/usr']
         sources = [out/'core.c', rt/'wasm-rt-impl.c', HOST/'split_reservation.c',
                    HOST/'guest_memory.c', HOST/'guest_memory_posix.c', HOST/'bridge.c',
                    ROOT/'port/host/host_posix.c',

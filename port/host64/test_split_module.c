@@ -72,6 +72,10 @@ static void expect_trap(unsigned operation) {
         case 8: (void)host64_bridge_pointer(0x39fffffe,4); break;
         case 9: (void)host64_bridge_pointer(0x50000000,0); break;
         case 10: (void)host64_bridge_string(0x39fffffc); break;
+        case 11: w2c_core_copy16(&core,0x50000000,0x08000000); break;
+        case 12: w2c_core_copy16(&core,0x08000000,0x50000000); break;
+        case 13: w2c_core_copy16(&core,0x08000000,0x39fffff8); break;
+        case 14: w2c_core_copy16(&core,0x39fffff8,0x08000000); break;
         default: assert(0);
         }
         assert(!"expected trap");
@@ -122,13 +126,16 @@ int main(void) {
     assert(w2c_core_load(&core,0x08000004)==0x5a5a5a5a);
     w2c_core_copy(&core,0x08000008,0x08000000,4);
     assert(w2c_core_load(&core,0x08000008)==0x12345678);
+    w2c_core_copy16(&core,0x08000040,0x08000000);
+    assert(w2c_core_load(&core,0x08000040)==0x12345678);
+    assert(w2c_core_load(&core,0x08000044)==0x5a5a5a5a);
     /* Empty spans in the hole are legal after wasm bounds checks. */
     w2c_core_fill(&core,0x50000000,0x99,0);
     w2c_core_copy(&core,0x50000000,0x50000000,0);
     memcpy((void *)(base+0x08000010u),"hello",6);
     assert(!strcmp(host64_bridge_string(0x08000010),"hello"));
     memset((void *)(base+0x39fffffcu),'X',4); /* unterminated at the hole boundary */
-    for (unsigned i=0;i<11;i++) expect_trap(i);
+    for (unsigned i=0;i<15;i++) expect_trap(i);
     assert(*(volatile uint32_t *)sentinel==0xa55aa55a);
     wasm_rt_memory_t *m=w2c_core_memory(&core);
     assert(wasm_rt_grow_memory(m,1)==0x70e0);

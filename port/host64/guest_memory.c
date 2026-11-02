@@ -116,6 +116,9 @@ void wasm_rt_allocate_memory(wasm_rt_memory_t *m,uint64_t initial,uint64_t max,
        the early attempt failed (or was not requested), try once here instead. */
     if (!guest_base) guest_base=os_reserve();
     if (!guest_base) os_fail("reserve guest span");
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    fprintf(stderr,"host64 memory: experimental split span ready at %p\n",(void *)guest_base);
+#endif
     for (unsigned i=0;i<ACTIVE_REGIONS;i++)
         if (!unowned(i) && !os_split(guest_base+edges[i],edges[i+1]-edges[i])) os_fail("split reservation");
     for (unsigned i=0;i<ACTIVE_REGIONS;i++) {

@@ -1,4 +1,4 @@
-/* Experimental, not yet wired into the game allocator. */
+/* Split reservation planner and claims, used only by the opt-in experimental allocator. */
 #ifndef DHD_SPLIT_RESERVATION_H
 #define DHD_SPLIT_RESERVATION_H
 #include <stddef.h>

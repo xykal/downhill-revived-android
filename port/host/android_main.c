@@ -22,6 +22,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -235,6 +236,13 @@ __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
         }
     }
     host_console_init();
+#ifdef DHD_EXPERIMENTAL_SPLIT_MEMORY
+    {
+        extern uintptr_t guest_base;
+        fprintf(stderr,"android: experimental split guest reservation %s (base=%p)\n",
+                guest_base ? "ready" : "not ready; will retry",(void *)guest_base);
+    }
+#endif
     fprintf(stderr, "android: Downhill Revived in %s\n", files);
     install_crash_report();  /* the log is open now; the game's fault guard chains to it */
     {   /* a profile-collecting build (build_host64.py --target android-arm64 --pgo-generate): its counters go to the
