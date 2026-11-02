@@ -74,7 +74,11 @@ void wasm_rt_allocate_memory(wasm_rt_memory_t *m,uint64_t initial,uint64_t max,
     if (owner || is64 || page_size!=65536 || initial<HOST64_MIN_MEMORY_SIZE/65536 ||
         initial>max || max>65536 || initial*65536<=HOST64_MODULE_BASE)
         os_fail("unsupported module memory layout");
-    guest_base=os_reserve();
+    /* Reuse the reservation made by Android before its picker and runtime grow.
+       Reserving again leaks the first span and its RAM backing fd; on a 32-bit
+       process it also makes the second reservation almost certain to fail. If
+       the early attempt failed (or was not requested), try once here instead. */
+    if (!guest_base) guest_base=os_reserve();
     if (!guest_base) os_fail("reserve guest span");
     for (unsigned i=0;i<REGIONS-1;i++)
         if (!os_split(guest_base+edges[i],edges[i+1]-edges[i])) os_fail("split reservation");
