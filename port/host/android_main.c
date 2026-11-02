@@ -22,6 +22,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +41,8 @@ const char *host_disc_check(const char *path);  /* host.c: NULL when path is the
 static char files[1024];      /* the app's files folder, with a trailing slash */
 static char exe[1100];        /* files + "dhd64": what host_exe_path answers */
 static Uint64 boot_start_ms;
+static atomic_int settings_ready;
+int android_settings_ready(void) { return atomic_load_explicit(&settings_ready, memory_order_acquire); }
 #ifndef DHD_BUILD_ID
 #define DHD_BUILD_ID "unknown"
 #endif
@@ -225,6 +228,14 @@ static void settings_start(const char *disc)
     snprintf(path, sizeof path, "%sdhd.ini", files);
     if (!dhd_settings_read(path, "iso", cur, sizeof cur) || strcmp(cur, disc))
         dhd_settings_save(path, "iso", disc);
+#if defined(__arm__)
+    /* Default to the lightest resolution only when the player has not chosen one.
+       Existing preferences and explicit DHD_SCALE overrides remain untouched. */
+    if (!getenv("DHD_SCALE") && !dhd_settings_read(path, "scale", cur, sizeof cur)) {
+        if (dhd_settings_save(path, "scale", "1"))
+            fprintf(stderr, "android: no chosen resolution; using 1x for ARMv7 (change in touch settings)\n");
+    }
+#endif
 }
 
 __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
@@ -288,6 +299,7 @@ __attribute__((visibility("default"))) int SDL_main(int argc, char **argv)
     }
     android_boot_note("Disc readable; starting game core");
     settings_start(disc);
+    atomic_store_explicit(&settings_ready, 1, memory_order_release);
     char *args[] = {exe, NULL};
     (void)argc; (void)argv;
     int code = dhd_launcher_main(1, args);

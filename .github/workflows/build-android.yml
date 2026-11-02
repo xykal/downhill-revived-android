@@ -48,6 +48,16 @@ jobs:
           cd "$HOME/simde" && git checkout -q 65c15e6
           ln -sfn "$HOME/simde" "$HOME/DevCaches/simde-src"
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
+      - name: Touch controls and multitouch regression
+        run: |
+          mkdir -p /tmp/dhd-touch-test
+          javac -d /tmp/dhd-touch-test \
+            port/android/app/src/main/java/app/downhillrevived/TouchPadModel.java \
+            port/android/app/src/test/java/app/downhillrevived/TouchPadModelTest.java
+          java -cp /tmp/dhd-touch-test app.downhillrevived.TouchPadModelTest
+          cc -std=gnu11 -O2 -Wall -Wextra -Werror -Iport/runtime -Iport/include \
+            port/host/android_touch.c port/host/test_android_touch.c -o /tmp/test-touch
+          /tmp/test-touch
       - name: Android log size cap regression
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror port/hle/test_android_log_limit.c -o /tmp/test-android-log-limit
@@ -76,6 +86,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-arm-linux-gnueabihf qemu-user
           common="-std=gnu11 -O2 -static -march=armv7-a -mfpu=vfpv3-d16 -Wall -Wextra -Werror"
+          arm-linux-gnueabihf-gcc -std=gnu11 -O2 -Wall -Wextra -Werror -Iport/runtime -Iport/include \
+            port/host/android_touch.c port/host/test_android_touch.c -o /tmp/test-touch-armv7
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-touch-armv7
           # Exercise the real ARM mcontext registers and re-raised synchronous SIGSEGV.
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \
             port/hle/test_android_crash_log.c -ldl -o /tmp/test-crash-armv7
@@ -224,6 +237,11 @@ jobs:
           path: build/android/*armeabi-v7a*.apk
           if-no-files-found: error
 
+      - name: Verify touch JNI exports
+        run: |
+          nm="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          "$nm" -D --defined-only build/android/lib/armeabi-v7a/libmain.so | grep 'Java_app_downhillrevived_DhdActivity_nativeTouchState'
+          "$nm" -D --defined-only build/android/lib/armeabi-v7a/libmain.so | grep 'Java_app_downhillrevived_DhdActivity_nativeSaveOption'
       - name: Verify matching Android ELF build IDs
         if: env.DHD_ELF_URL != ''
         run: |

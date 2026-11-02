@@ -29,6 +29,7 @@
 #include "../host/backtrace_posix.h"  /* <execinfo.h>, or Android's own (API < 33) */
 #ifdef __ANDROID__
 #include <android/log.h>
+#include "../host/android_touch.h"
 #include <fcntl.h>
 #include "android_log_limit.h"
 #if defined(__arm__)
@@ -991,7 +992,12 @@ void host_pad_device(int port, HostPad *out)
     memset(out, 0, sizeof *out);
     out->right_x = out->right_y = out->left_x = out->left_y = 128;
     int connected = gamepad_start() && gamepad_read(port, out);
-    if (port == 0) keyboard_merge(out);
+    if (port == 0) {
+        keyboard_merge(out);
+#ifdef __ANDROID__
+        android_touch_merge(out);
+#endif
+    }
     out->connected = (uint8_t)(connected || port == 0);  /* player 1 always has the keyboard */
 }
 
@@ -1082,7 +1088,16 @@ int host_setting_save(const char *key, const char *value)
 {
     char path[HOST_PATH_MAX];
     settings_path(path, sizeof path);
+#ifdef __ANDROID__
+    /* JNI settings and the game menu can save concurrently to the same .new file. */
+    static pthread_mutex_t android_settings_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&android_settings_lock);
+    int saved = dhd_settings_save(path, key, value);
+    pthread_mutex_unlock(&android_settings_lock);
+    return saved;
+#else
     return dhd_settings_save(path, key, value);
+#endif
 }
 
 /* Read afresh after each game-data load; these values never become DHD_* overrides. */
