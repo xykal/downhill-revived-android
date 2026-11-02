@@ -20,7 +20,8 @@ final class TouchPadModel {
     void resize(float width,float height) {
         w=Math.max(1,width); h=Math.max(1,height); u=Math.min(h,w/1.6f);
         leftX=.225f*w;leftY=.78f*h;rightX=.775f*w;rightY=.78f*h;
-        dpadX=.095f*w;dpadY=.53f*h;faceX=.905f*w;faceY=.53f*h;
+        // Keep the full D-pad and face buttons on-screen at common landscape aspect ratios.
+        dpadX=.18f*u;dpadY=.53f*h;faceX=w-.24f*u;faceY=.53f*h;
         stickR=.105f*u;buttonR=.075f*u;faceOffset=.145f*u;
         gearX=.5f*w;gearY=.10f*h;gearR=.055f*u;
         touches.clear();
