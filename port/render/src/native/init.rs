@@ -140,6 +140,20 @@ fn module(gpu: &Gpu, source: &str, label: &str) -> wgpu::ShaderModule {
             source.to_owned()
         }
     };
+    // GLES has no core noperspective qualifier. This shader's native vertex
+    // position always has clip-space w=1, so perspective and linear varyings
+    // are mathematically equivalent. Keep the original on other backends.
+    // A regression test below checks the w=1 invariant and exact declarations.
+    let gl_source;
+    if gpu.info.backend == wgpu::Backend::Gl && source.contains("fn native_vertex(") {
+        gl_source = source
+            .replace("@location(0) @interpolate(linear) stqf", "@location(0) @interpolate(perspective) stqf")
+            .replace("@location(1) @interpolate(linear) color", "@location(1) @interpolate(perspective) color");
+        let source = gl_source.as_str();
+        return gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(label), source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+    }
     gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
         source: wgpu::ShaderSource::Wgsl(source.into()),

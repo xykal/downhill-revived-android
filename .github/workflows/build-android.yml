@@ -95,6 +95,14 @@ jobs:
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Prime cargo registry (rustgs builds --locked --offline)
         run: cd port/render && cargo fetch --locked
+      - name: Verify Android ARMv7 GL backend is compiled
+        run: python3 port/tools/test_renderer_features.py
+      - name: Mesa GLES pipeline and depth readback smoke test (Linux, not Android)
+        run: |
+          sudo apt-get install -y -qq libegl1 libgles2 libgl1-mesa-dri
+          cd port/render
+          LIBGL_ALWAYS_SOFTWARE=1 DHD_TEST_FORCE_GLES=1 cargo test --locked --offline \
+            --features native,gles-smoke --test gl_smoke -- --nocapture
       - name: Fixture link (armeabi-v7a)
         run: python3 port/tools/build_host64.py --target android-armv7 --fake --wasi "$WASI_SDK" --jobs 4
       - name: Fiber selftest binary

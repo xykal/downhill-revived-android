@@ -1,0 +1,9 @@
+# Android ARMv7 GLES startup (experimental)
+
+The ARMv7 Android host selects `Backends::GL` by default. wgpu's `gles` feature must be enabled specifically for that target; `port/tools/test_renderer_features.py` verifies the resolved ARMv7 and ARM64 graphs in CI. This only establishes that the backend is compiled.
+
+The renderer's native shaders load depth textures with `textureLoad`. Naga 29's GLSL writer rejects that operation. The local `vendor/naga` fork maps raw depth loads to `texelFetch` of a non-shadow sampler and selects `.x`; it fails closed for depth sampling operations, which the renderer does not currently use. This is an application-specific GLES workaround, not a general replacement for Naga's shadow-sampling support. Mesa GLES tests initialize the renderer and read back four depth values (0, .25, .75, 1); they do not validate all texture dimensions, driver behavior, or the complete game.
+
+GLSL ES lacks core `noperspective`. For the native shader only on the GL backend, two linear varyings are compiled as perspective varyings: its vertex position is explicitly written with constant clip-space w=1, making the interpolations mathematically equivalent. The GLES smoke test checks that invariant and the exact varying declarations. Changes to the shader's vertex w or interpolation declarations must revisit this workaround.
+
+The Linux test forces a Mesa GLES rather than desktop GL context using the Linux-only, test opt-in `DHD_TEST_FORCE_GLES`. It covers software-renderer startup, representative pipelines and depth readback. It does not test Android's EGL window, the phone's PowerVR driver, performance, rendering accuracy, gameplay or the previously observed RenderThread SIGSEGV. Real-device logs and testing remain mandatory; a green CI is not a playable-release claim.

@@ -467,6 +467,10 @@ impl Inner {
         if supports_opengl && force_gles_minor_version != wgt::Gles3MinorVersion::Automatic {
             log::warn!("Ignoring specified GLES minor version as OpenGL is used");
         }
+        // Test-only Linux opt-in: Mesa otherwise prefers desktop GL even when
+        // the Android GLES path is the code being regression-tested.
+        #[cfg(target_os = "linux")]
+        let supports_opengl = supports_opengl && std::env::var_os("DHD_TEST_FORCE_GLES").is_none();
         gles_context_attributes.push(khronos_egl::CONTEXT_MAJOR_VERSION);
         gles_context_attributes.push(3); // Request GLES 3.0 or higher
         if force_gles_minor_version != wgt::Gles3MinorVersion::Automatic {
