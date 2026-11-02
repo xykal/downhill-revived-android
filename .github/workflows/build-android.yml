@@ -48,6 +48,10 @@ jobs:
           cd "$HOME/simde" && git checkout -q 65c15e6
           ln -sfn "$HOME/simde" "$HOME/DevCaches/simde-src"
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
+      - name: Android log size cap regression
+        run: |
+          cc -std=gnu11 -O2 -Wall -Wextra -Werror port/hle/test_android_log_limit.c -o /tmp/test-android-log-limit
+          /tmp/test-android-log-limit
       - name: Signal-safe crash record regression (Linux host)
         run: |
           cc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \

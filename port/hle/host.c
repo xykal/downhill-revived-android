@@ -29,6 +29,8 @@
 #include "../host/backtrace_posix.h"  /* <execinfo.h>, or Android's own (API < 33) */
 #ifdef __ANDROID__
 #include <android/log.h>
+#include <fcntl.h>
+#include "android_log_limit.h"
 #if defined(__arm__)
 #include "android_crash_log.h"
 #endif
@@ -375,7 +377,7 @@ static void crashed(int sig, siginfo_t *info, void *ctx)
 #if defined(__ANDROID__) && defined(__arm__)
     dhd_crash_write(sig, info, (const ucontext_t *)ctx, GUEST_BASE);
     /* Do not probe memory or use stdio in a fatal signal. SA_RESETHAND means that
-       returning to a synchronous fault lets Android debuggerd receive the original fault. */
+       returning to a synchronous fault retains signal-based process termination. */
     if (info && info->si_code > 0) return;
     _exit(128 + sig);
 #else
@@ -723,7 +725,7 @@ void host_init(void)
     struct sigaction sa, dump_sa;
     const char *dump = getenv("DHD_DUMP");
 #if defined(__ANDROID__) && defined(__arm__)
-    /* The external mirror is opened in append mode before host_init. */
+    /* The single Android log is opened in append mode before host_init. */
     extern int android_crash_log_fd(void);
     dhd_crash_init(android_crash_log_fd(), (const void *)&host_init);
 #endif
@@ -764,26 +766,25 @@ void host_init(void)
    file before the process ends (exit, host_exit), at most half a second. */
 static int log_pipe[2] = {-1, -1};
 static FILE *log_file;
-static FILE *log_mirror;  /* Android: the same lines in the app's external files folder, where
-                             the player can reach them from a file manager without adb */
-#if defined(__ANDROID__) && defined(__arm__)
-int android_crash_log_fd(void) { return log_mirror ? fileno(log_mirror) : (log_file ? fileno(log_file) : -1); }
+#ifdef __ANDROID__
+static struct dhd_log_limit android_log_limit;
+#if defined(__arm__)
+int android_crash_log_fd(void) { return log_file ? fileno(log_file) : -1; }
+#endif
 #endif
 static atomic_int log_busy;  /* the thread is between a read and its last line written */
 
 static void log_line(char *line)
 {
 #ifdef __ANDROID__
+    int allowed = dhd_log_limit_next(&android_log_limit, strlen(line) + 1);
+    if (!allowed) return;
+    if (allowed == 2) line = DHD_ANDROID_LOG_NOTICE;
     __android_log_write(ANDROID_LOG_INFO, "DownhillRevived", line);
 #endif
     fputs(line, log_file);
     fputc('\n', log_file);
     fflush(log_file);
-    if (log_mirror) {
-        fputs(line, log_mirror);
-        fputc('\n', log_mirror);
-        fflush(log_mirror);
-    }
 }
 
 /* Only async-signal-safe calls besides fflush: host_exit also runs it after a fault. */
@@ -832,13 +833,19 @@ static void *log_copy(void *unused)
 
 static void log_start(const char *path)
 {
-    if (!(log_file = host_os_fopen(path, "w"))) return;
 #ifdef __ANDROID__
-    {   /* the player's copy of the log (android_main.c sets it): the external files folder,
-           reachable from a file manager — Android/data/app.downhillrevived/files/dhd.log */
-        const char *mirror = getenv("DHD_LOG_MIRROR");
-        if (mirror) log_mirror = host_os_fopen(mirror, "a");
-    }
+    /* One log per launch, not two unbounded copies. Prefer the player's accessible
+       external path; retain the internal fallback only when external opening fails. */
+    const char *external = getenv("DHD_LOG_MIRROR");
+    if (external) log_file = host_os_fopen(external, "w");
+    if (log_file && strcmp(external, path) != 0)
+        unlink(path); /* remove the previous version's redundant internal log, never saves */
+    if (!log_file) log_file = host_os_fopen(path, "w");
+    if (!log_file) return;
+    int fd = fileno(log_file), flags = fcntl(fd, F_GETFL);
+    if (flags >= 0) (void)fcntl(fd, F_SETFL, flags | O_APPEND);
+#else
+    if (!(log_file = host_os_fopen(path, "w"))) return;
 #endif
     if (pipe(log_pipe) != 0) { log_pipe[0] = -1; return; }
     fflush(stdout), fflush(stderr);
