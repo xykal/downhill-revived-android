@@ -877,6 +877,16 @@ void gs_vsync(void)
     if (disabled) return;
     if (app_background || surface_dropped) app_background_wait();
 #ifdef __ANDROID__
+    {   /* Apply UI choices on the game thread, as PC SETTINGS does, once the app resumes. */
+        void android_touch_take_live(int *,int *,int *);
+        void host_putenv_s(const char *,const char *);
+        int counter,shape,filter;
+        android_touch_take_live(&counter,&shape,&filter);
+        if (counter>=0) host_putenv_s("DHD_PERF_COUNTER",counter ? "1" : "0");
+        if (shape>=0) { const char *const shapes[]={"stretch","wide","4:3"}; host_putenv_s("DHD_ASPECT",shapes[shape]); }
+        if (filter>=0) host_putenv_s("DHD_PRESENT_FILTER",filter ? "point" : "linear");
+        if (counter>=0 || shape>=0 || filter>=0) gs_present_options_apply();
+    }
     { void android_perf_field(void); android_perf_field(); }  /* port/host/android_perf.c: CPU clocks */
 #endif
     uint64_t mmio[15];

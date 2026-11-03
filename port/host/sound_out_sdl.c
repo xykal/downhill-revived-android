@@ -145,30 +145,8 @@ static struct {
 
 static float st_mono(long at) { const int16_t *f = &ring[(at % RING_SAMPLES) * 2]; return (float)f[0] + f[1]; }
 
-/* Best start in [lo, hi] for a window like the one at ref (normalized cross-correlation on the
-   mono sum, every second sample, then refined by one sample each way). */
-static long st_seek(long lo, long hi, long ref)
-{
-    static float want[ST_HOP / 2];
-    long best = lo, at;
-    double best_score = -1e300;
-    for (int i = 0; i < ST_HOP / 2; i++) want[i] = st_mono(ref + 2 * i);
-    for (int pass = 0; pass < 2; pass++) {
-        long from = pass ? best - 1 : lo, to = pass ? best + 1 : hi, step = pass ? 1 : 2;
-        if (from < lo) from = lo;
-        if (to > hi) to = hi;
-        for (at = from; at <= to; at += step) {
-            double dot = 0, energy = 1;
-            for (int i = 0; i < ST_HOP / 2; i++) {
-                float x = st_mono(at + 2 * i);
-                dot += x * want[i]; energy += x * x;
-            }
-            double score = dot / sqrt(energy);
-            if (score > best_score) { best_score = score; best = at; }
-        }
-    }
-    return best;
-}
+/* The identical correlation search, with candidate ring samples cached per hop. */
+#include "sound_wsola_seek.h"
 
 static void st_put(int16_t l, int16_t r)
 {

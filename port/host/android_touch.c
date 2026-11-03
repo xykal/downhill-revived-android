@@ -42,8 +42,37 @@ int android_touch_option(int option, int value, const char **key, const char **s
     case 5: if (value<0 || value>1) return 0; *key="DHD_PRESENT_FILTER"; *setting=filters[value]; return 1;
     case 6: if (value<0 || value>1) return 0; *key="skip_movies"; *setting=booleans[value]; return 1;
     case 7: if (value<0 || value>1) return 0; *key="vsync"; *setting=booleans[value]; return 1;
+    case 8: if (value<0 || value>1) return 0; *key="DHD_SND_STRETCH"; *setting=booleans[value]; return 1;
+    case 9: if (value<0 || value>1) return 0; *key="fps"; *setting=value ? "monitor" : "60"; return 1;
+    case 10: {
+        static const char *const buffers[]={"70","120","200"};
+        if (value<0 || value>2) return 0;
+        *key="sound_latency_ms"; *setting=buffers[value]; return 1;
+    }
+    case 11: if (value<0 || value>1) return 0; *key="DHD_TIMELINE"; *setting=value ? "1" : ""; return 1;
+    case 12: {
+        static const char *const spins[]={"3000","1000","0"};
+        if (value<0 || value>2) return 0;
+        *key="DHD_SPIN_US"; *setting=spins[value]; return 1;
+    }
+    case 13: if (value<0 || value>1) return 0; *key="DHD_RSTAT"; *setting=value ? "1" : ""; return 1;
+    case 14: if (value<0 || value>1) return 0; *key="DHD_SND_HOST_TRACE"; *setting=value ? "1" : ""; return 1;
     default: return 0;
     }
+}
+/* UI thread publishes live choices only after the ini save; game thread consumes them. */
+static atomic_int live_counter=ATOMIC_VAR_INIT(-1), live_shape=ATOMIC_VAR_INIT(-1), live_filter=ATOMIC_VAR_INIT(-1);
+void android_touch_queue_live(int option, int value)
+{
+    if (option==2 && value>=0 && value<=1) atomic_store_explicit(&live_counter,value,memory_order_release);
+    if (option==3 && value>=0 && value<=2) atomic_store_explicit(&live_shape,value,memory_order_release);
+    if (option==5 && value>=0 && value<=1) atomic_store_explicit(&live_filter,value,memory_order_release);
+}
+void android_touch_take_live(int *counter,int *shape,int *filter)
+{
+    *counter=atomic_exchange_explicit(&live_counter,-1,memory_order_acq_rel);
+    *shape=atomic_exchange_explicit(&live_shape,-1,memory_order_acq_rel);
+    *filter=atomic_exchange_explicit(&live_filter,-1,memory_order_acq_rel);
 }
 #ifdef __ANDROID__
 extern int android_settings_ready(void);
@@ -58,6 +87,8 @@ JNIEXPORT jboolean JNICALL Java_app_downhillrevived_DhdActivity_nativeSaveOption
     (void)env;(void)cls;
     const char *key, *setting;
     if (!android_settings_ready() || !android_touch_option(option,value,&key,&setting)) return JNI_FALSE;
-    return host_setting_save(key,setting) ? JNI_TRUE : JNI_FALSE;
+    if (!host_setting_save(key,setting)) return JNI_FALSE;
+    android_touch_queue_live(option,value);
+    return JNI_TRUE;
 }
 #endif

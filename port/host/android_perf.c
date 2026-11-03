@@ -197,5 +197,6 @@ static void android_perf_summary(void)
     }
     fprintf(stderr, "android-perf: fields/s=%.1f wall=%.1f ms/field cpu-ms/field game=%.1f vu=%.1f gs=%.1f native=%.1f (GPU time not measured)\n",
             fields * 1e9 / duration, duration / 1e6 / fields, cpu[0], cpu[1], cpu[2], cpu[3]);
+    { void graphics_timeline_live(unsigned); graphics_timeline_live(fields); }
     start_ns = now; fields = 0;
 }

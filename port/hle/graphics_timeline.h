@@ -58,6 +58,25 @@ static void tl_site(void *site, int pending, int64_t ticks)
     tl_sites[i].ticks += ticks;
 }
 
+/* Optional, bounded-rate Android live profile: wall time in waits, not pure CPU or GPU time.
+   Enabled only when DHD_TIMELINE is present. The first call establishes a baseline. */
+void graphics_timeline_live(unsigned fields)
+{
+    static int initialized;
+    static int64_t last[6];
+    if (!timeline_enabled() || !fields) return;
+    const unsigned indexes[6]={TL_EE_SPIN,TL_EE_PARK,TL_VU_SPIN,TL_VU_PARK,TL_GS_SPIN,TL_GS_PARK};
+    int64_t now[6];
+    for (unsigned i=0;i<6;i++) now[i]=atomic_load_explicit(&tl_ticks[indexes[i]],memory_order_relaxed);
+    if (initialized) {
+        double f=1000.0 / (double)SDL_GetPerformanceFrequency() / fields;
+        fprintf(stderr,"android-waits: wall-ms/field game_spin=%.1f game_park=%.1f vu_spin=%.1f vu_park=%.1f gs_spin=%.1f gs_park=%.1f (profiling enabled)\n",
+                (now[0]-last[0])*f,(now[1]-last[1])*f,(now[2]-last[2])*f,
+                (now[3]-last[3])*f,(now[4]-last[4])*f,(now[5]-last[5])*f);
+    }
+    memcpy(last,now,sizeof last); initialized=1;
+}
+
 static int tl_compare(const void *a, const void *b)
 {
     double x = *(const double *)a, y = *(const double *)b;
@@ -163,6 +182,7 @@ void graphics_timeline(int phase, unsigned field, double wall_seconds)
     fflush(stderr);
 }
 #else
+void graphics_timeline_live(unsigned fields) { (void)fields; }
 static int64_t tl_now(void) { return 0; }
 static int64_t tl_begin(void) { return 0; }
 static void tl_add(unsigned which, int64_t start) { (void)which, (void)start; }

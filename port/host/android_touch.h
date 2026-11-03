@@ -5,4 +5,6 @@
 void android_touch_set(unsigned buttons, int lx, int ly, int rx, int ry, unsigned active);
 void android_touch_merge(HostPad *out);
 int android_touch_option(int option, int value, const char **key, const char **setting);
+void android_touch_queue_live(int option, int value);
+void android_touch_take_live(int *counter, int *shape, int *filter);
 #endif

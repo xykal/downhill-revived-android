@@ -231,3 +231,16 @@ fn c_interface() {
     assert_eq!(fs::read_to_string(&p).unwrap(), "fps = 120\ngame_options = 1 800\nscale = 5\n");
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn android_diagnostic_toggles_do_not_leave_empty_environment_variables() {
+    for name in ["DHD_TIMELINE", "DHD_RSTAT", "DHD_SND_HOST_TRACE"] {
+        let enabled = saved(b"fps = 60\n", name, "1");
+        let ini = Ini::parse(&enabled);
+        assert!(environment(Some(&ini), |_| false).vars.iter().any(|(k,v)| k == name && v == "1"));
+        let disabled = saved(&enabled, name, "");
+        let ini = Ini::parse(&disabled);
+        assert!(!environment(Some(&ini), |_| false).vars.iter().any(|(k,_)| k == name));
+        assert_eq!(ini.value("fps"), "60");
+    }
+}

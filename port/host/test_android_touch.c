@@ -23,5 +23,19 @@ int main(void) {
     assert(android_touch_option(5,1,&key,&value) && !strcmp(key,"DHD_PRESENT_FILTER") && !strcmp(value,"point"));
     assert(!android_touch_option(3,3,&key,&value) && !android_touch_option(0,0,&key,&value));
     assert(!android_touch_option(1,-1,&key,&value) && !android_touch_option(1,1,NULL,&value));
-    puts("PASS: physical pad merge, analog, pressure, clamp, release, settings whitelist");
+    assert(android_touch_option(8,0,&key,&value) && !strcmp(key,"DHD_SND_STRETCH") && !strcmp(value,"0"));
+    assert(android_touch_option(9,0,&key,&value) && !strcmp(key,"fps") && !strcmp(value,"60"));
+    assert(android_touch_option(10,1,&key,&value) && !strcmp(key,"sound_latency_ms") && !strcmp(value,"120"));
+    assert(!android_touch_option(10,3,&key,&value));
+    assert(android_touch_option(11,0,&key,&value) && !strcmp(key,"DHD_TIMELINE") && !strcmp(value,""));
+    assert(android_touch_option(11,1,&key,&value) && !strcmp(value,"1"));
+    assert(android_touch_option(12,2,&key,&value) && !strcmp(key,"DHD_SPIN_US") && !strcmp(value,"0"));
+    assert(android_touch_option(13,1,&key,&value) && !strcmp(key,"DHD_RSTAT"));
+    assert(android_touch_option(14,0,&key,&value) && !strcmp(key,"DHD_SND_HOST_TRACE") && !strcmp(value,""));
+    int counter,shape,filter;
+    android_touch_queue_live(2,1); android_touch_queue_live(3,2); android_touch_queue_live(3,0); android_touch_queue_live(5,1);
+    android_touch_take_live(&counter,&shape,&filter); assert(counter==1 && shape==0 && filter==1);
+    android_touch_take_live(&counter,&shape,&filter); assert(counter==-1 && shape==-1 && filter==-1);
+    android_touch_queue_live(3,9); android_touch_take_live(&counter,&shape,&filter); assert(shape==-1);
+    puts("PASS: touch merge, settings whitelist and live-option queue");
 }

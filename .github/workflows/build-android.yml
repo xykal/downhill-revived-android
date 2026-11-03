@@ -64,6 +64,10 @@ jobs:
             port/gs/memory.c port/gs/gs.c port/gs/display.c port/gs/test_gs.c port/host64/test_low.c \
             -lm -o /tmp/test-gs
           /tmp/test-gs
+      - name: Audio stretch search regression
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_wsola.c -lm -o /tmp/test-sound-wsola
+          /tmp/test-sound-wsola
       - name: Android log size cap regression
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror port/hle/test_android_log_limit.c -o /tmp/test-android-log-limit
@@ -99,6 +103,8 @@ jobs:
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -Wall -Wextra -Werror -Iport/runtime -Iport/include \
             port/host/android_touch.c port/host/test_android_touch.c -o /tmp/test-touch-armv7
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-touch-armv7
+          arm-linux-gnueabihf-gcc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_wsola.c -lm -o /tmp/test-sound-wsola-armv7
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-wsola-armv7
           # Exercise the real ARM mcontext registers and re-raised synchronous SIGSEGV.
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \
             port/hle/test_android_crash_log.c -ldl -o /tmp/test-crash-armv7
@@ -133,6 +139,8 @@ jobs:
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Prime cargo registry (rustgs builds --locked --offline)
         run: cd port/render && cargo fetch --locked
+      - name: Settings corpus regression
+        run: cd port/render && cargo test --locked --offline -p dhd_settings --test corpus
       - name: Verify Android ARMv7 GL backend is compiled
         run: python3 port/tools/test_renderer_features.py
       - name: Mesa GLES pipeline and depth readback smoke test (Linux, not Android)
