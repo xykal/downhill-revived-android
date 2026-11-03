@@ -58,6 +58,12 @@ jobs:
           cc -std=gnu11 -O2 -Wall -Wextra -Werror -Iport/runtime -Iport/include \
             port/host/android_touch.c port/host/test_android_touch.c -o /tmp/test-touch
           /tmp/test-touch
+      - name: GS packed vertex regression
+        run: |
+          cc -std=gnu11 -O2 -no-pie -Iport/runtime -Iport/include -Iport/hle \
+            port/gs/memory.c port/gs/gs.c port/gs/display.c port/gs/test_gs.c port/host64/test_low.c \
+            -lm -o /tmp/test-gs
+          /tmp/test-gs
       - name: Android log size cap regression
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror port/hle/test_android_log_limit.c -o /tmp/test-android-log-limit
@@ -86,6 +92,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-arm-linux-gnueabihf qemu-user
           common="-std=gnu11 -O2 -static -march=armv7-a -mfpu=vfpv3-d16 -Wall -Wextra -Werror"
+          arm-linux-gnueabihf-gcc -std=gnu11 -O2 -no-pie -Iport/runtime -Iport/include -Iport/hle \
+            port/gs/memory.c port/gs/gs.c port/gs/display.c port/gs/test_gs.c port/host64/test_low.c \
+            -lm -o /tmp/test-gs-armv7
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-gs-armv7
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -Wall -Wextra -Werror -Iport/runtime -Iport/include \
             port/host/android_touch.c port/host/test_android_touch.c -o /tmp/test-touch-armv7
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-touch-armv7

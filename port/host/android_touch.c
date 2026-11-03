@@ -27,6 +27,24 @@ void android_touch_merge(HostPad *out)
     if (s.active&2) out->right_x=s.rx, out->right_y=s.ry;
     for (unsigned i=0;i<12;i++) if (s.buttons&order[i]) out->pressure[i]=255;
 }
+/* Whitelist UI settings; never allow the Java UI to overwrite the saved ISO URI. */
+int android_touch_option(int option, int value, const char **key, const char **setting)
+{
+    static const char *const booleans[]={"0","1"};
+    static const char *const shapes[]={"stretch","wide","4:3"};
+    static const char *const filters[]={"linear","point"};
+    if (!key || !setting) return 0;
+    switch (option) {
+    case 1: if (value<1 || value>3) return 0; *key="scale"; *setting=value==1 ? "1" : value==2 ? "2" : "window"; return 1;
+    case 2: if (value<0 || value>1) return 0; *key="perf_counter"; *setting=booleans[value]; return 1;
+    case 3: if (value<0 || value>2) return 0; *key="DHD_ASPECT"; *setting=shapes[value]; return 1;
+    case 4: if (value<0 || value>1) return 0; *key="widescreen"; *setting=booleans[value]; return 1;
+    case 5: if (value<0 || value>1) return 0; *key="DHD_PRESENT_FILTER"; *setting=filters[value]; return 1;
+    case 6: if (value<0 || value>1) return 0; *key="skip_movies"; *setting=booleans[value]; return 1;
+    case 7: if (value<0 || value>1) return 0; *key="vsync"; *setting=booleans[value]; return 1;
+    default: return 0;
+    }
+}
 #ifdef __ANDROID__
 extern int android_settings_ready(void);
 JNIEXPORT void JNICALL Java_app_downhillrevived_DhdActivity_nativeTouchState(
@@ -38,9 +56,8 @@ JNIEXPORT jboolean JNICALL Java_app_downhillrevived_DhdActivity_nativeSaveOption
     JNIEnv *env, jclass cls, jint option, jint value)
 {
     (void)env;(void)cls;
-    if (!android_settings_ready()) return JNI_FALSE; /* don't race initial ISO/settings writes */
-    if (option==1 && (value==1 || value==2)) return host_setting_save("scale", value==1 ? "1" : "2") ? JNI_TRUE : JNI_FALSE;
-    if (option==2 && (value==0 || value==1)) return host_setting_save("perf_counter", value ? "1" : "0") ? JNI_TRUE : JNI_FALSE;
-    return JNI_FALSE;
+    const char *key, *setting;
+    if (!android_settings_ready() || !android_touch_option(option,value,&key,&setting)) return JNI_FALSE;
+    return host_setting_save(key,setting) ? JNI_TRUE : JNI_FALSE;
 }
 #endif

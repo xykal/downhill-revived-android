@@ -30,9 +30,16 @@ final class TouchOverlayView extends View {
         super.onSizeChanged(w,h,oldw,oldh); model.resize(w,h); listener.send(model.state());
     }
     private void circle(Canvas c,float x,float y,float r,String text,int color) {
-        paint.setStyle(Paint.Style.FILL);paint.setColor(Color.argb(alpha/2,15,22,28));c.drawCircle(x,y,r,paint);
+        circle(c,x,y,r,text,color,false);
+    }
+    private void circle(Canvas c,float x,float y,float r,String text,int color,boolean pressed) {
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(pressed ? Color.argb(Math.min(230,alpha),55,78,100) : Color.argb(alpha/2,12,20,30));
+        c.drawCircle(x,y,r,paint);
         paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(Math.max(2,model.u*.004f));
-        paint.setColor(Color.argb(alpha,220,230,235));c.drawCircle(x,y,r,paint);
+        int border = color==Color.WHITE ? 0xffdce6eb : color;
+        paint.setColor((border & 0x00ffffff) | (Math.min(255,pressed?alpha+90:alpha)<<24));
+        c.drawCircle(x,y,r,paint);
         if(text!=null) label(c,text,x,y,model.u*.060f,color);
     }
     private void label(Canvas c,String text,float x,float y,float size,int color) {
@@ -69,10 +76,11 @@ final class TouchOverlayView extends View {
             label(c,"▼",model.dpadX,model.dpadY+u*.105f,u*.045f,Color.WHITE);
             label(c,"◀",model.dpadX-u*.105f,model.dpadY,u*.045f,Color.WHITE);
             label(c,"▶",model.dpadX+u*.105f,model.dpadY,u*.045f,Color.WHITE);
-            circle(c,model.faceX,model.faceY-model.faceOffset,model.buttonR,"△",0xff8ee7b3);
-            circle(c,model.faceX+model.faceOffset,model.faceY,model.buttonR,"○",0xffffa3a3);
-            circle(c,model.faceX,model.faceY+model.faceOffset,model.buttonR,"×",0xffa2caff);
-            circle(c,model.faceX-model.faceOffset,model.faceY,model.buttonR,"□",0xffffb6e3);
+            int buttons=model.state().buttons;
+            circle(c,model.faceX,model.faceY-model.faceOffset,model.buttonR,"△",0xff8ee7b3,(buttons&TouchPadModel.TRIANGLE)!=0);
+            circle(c,model.faceX+model.faceOffset,model.faceY,model.buttonR,"○",0xffffa3a3,(buttons&TouchPadModel.CIRCLE)!=0);
+            circle(c,model.faceX,model.faceY+model.faceOffset,model.buttonR,"×",0xffa2caff,(buttons&TouchPadModel.CROSS)!=0);
+            circle(c,model.faceX-model.faceOffset,model.faceY,model.buttonR,"□",0xffffb6e3,(buttons&TouchPadModel.SQUARE)!=0);
             stick(c,TouchPadModel.LEFT_STICK,model.leftX,model.leftY);
             stick(c,TouchPadModel.RIGHT_STICK,model.rightX,model.rightY);
             capsule(c,model.leftX,.964f*model.h,.075f*model.w,.05f*model.h,"L3");

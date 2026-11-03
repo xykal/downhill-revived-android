@@ -46,30 +46,58 @@ public class DhdActivity extends SDLActivity {
     }
     private void showTouchSettings() {
         if(touchOverlay==null || isFinishing())return;
-        final String[] items={"Grafik ringan: resolusi 1x", "Grafik lebih tajam: resolusi 2x",
-            "Tampilkan FPS", "Sembunyikan FPS", "Transparansi kontrol",
-            touchOverlay.controlsVisible() ? "Sembunyikan tombol" : "Tampilkan tombol", "Tutup"};
-        new AlertDialog.Builder(this).setTitle("Pengaturan Downhill")
+        final String[] items={"Layar dan grafik", "Kontrol sentuh", "Performa dan tampilan FPS", "Film pembuka"};
+        new AlertDialog.Builder(this).setTitle("PENGATURAN DOWNHILL")
             .setItems(items,(dialog,which)->{
-                if(which==0)saveOption(1,1);
-                else if(which==1)saveOption(1,2);
-                else if(which==2)saveOption(2,1);
-                else if(which==3)saveOption(2,0);
-                else if(which==4)showOpacity();
-                else if(which==5){
-                    boolean show=!touchOverlay.controlsVisible();touchOverlay.setControlsVisible(show);
-                    getPreferences(MODE_PRIVATE).edit().putBoolean("touch_visible",show).apply();
-                    Toast.makeText(this,"Ketuk ⚙ untuk membuka pengaturan lagi",Toast.LENGTH_SHORT).show();
-                }
-            }).show();
+                if(which==0)showDisplay();
+                else if(which==1)showControls();
+                else if(which==2)showPerformance();
+                else showMovies();
+            }).setNegativeButton("Tutup",null).show();
     }
+    private void choose(String title,String[] labels,java.util.function.IntConsumer action) {
+        new AlertDialog.Builder(this).setTitle(title).setItems(labels,(dialog,i)->action.accept(i))
+            .setNegativeButton("Kembali",(dialog,which)->showTouchSettings()).show();
+    }
+    private void showDisplay() {
+        choose("LAYAR DAN GRAFIK",new String[]{
+            "Bentuk layar: penuh / lebar / 4:3", "Widescreen: ON / OFF",
+            "Resolusi internal: 1x / 2x / layar", "Filter: halus / tajam", "V-Sync: ON / OFF"
+        },i->{
+            if(i==0)choose("BENTUK LAYAR",new String[]{"Penuh (stretch, gambar melebar)",
+                "Lebar (perlu widescreen ON)","Asli 4:3 (garis hitam)"},v->saveOption(3,v));
+            else if(i==1)choose("WIDESCREEN",new String[]{"ON", "OFF"},v->saveOption(4,v==0?1:0));
+            else if(i==2)choose("RESOLUSI INTERNAL",new String[]{"1x — ringan", "2x — lebih tajam, lebih berat", "Sesuai layar — sangat berat"},v->saveOption(1,v+1));
+            else if(i==3)choose("FILTER GAMBAR",new String[]{"Halus", "Tajam"},v->saveOption(5,v));
+            else choose("V-SYNC",new String[]{"OFF", "ON"},v->saveOption(7,v));
+        });
+    }
+    private void showControls() {
+        choose("KONTROL SENTUH",new String[]{"Transparansi",touchOverlay.controlsVisible() ? "Sembunyikan tombol" : "Tampilkan tombol",
+            "Panduan tombol Downhill"},i->{
+            if(i==0)showOpacity();
+            else if(i==1){boolean show=!touchOverlay.controlsVisible();touchOverlay.setControlsVisible(show);
+                getPreferences(MODE_PRIVATE).edit().putBoolean("touch_visible",show).apply();
+                Toast.makeText(this,"Ketuk ⚙ untuk membuka pengaturan lagi",Toast.LENGTH_SHORT).show();
+            } else new AlertDialog.Builder(this).setTitle("TOMBOL DOWNHILL")
+                .setMessage("X: mengayuh / sprint\n△: rem\n□ / ○: serang\nR2: lompat\nL1, L2, R1, R2: trik di udara\nL3: powerslide • R3: sprint")
+                .setPositiveButton("OK",null).show();
+        });
+    }
+    private void showPerformance() {
+        choose("PERFORMA",new String[]{"Penghitung FPS: ON / OFF", "Tentang profil dan lag"},i->{
+            if(i==0)choose("PENGHITUNG FPS",new String[]{"ON", "OFF"},v->saveOption(2,v==0?1:0));
+            else new AlertDialog.Builder(this).setTitle("PERFORMA")
+                .setMessage("1x memakai lebih sedikit piksel daripada 2x, tetapi FPS juga bergantung pada CPU, GPU dan driver. Catatan android-perf di dhd.log menunjukkan waktu CPU per thread; waktu GPU tidak diukur.")
+                .setPositiveButton("OK",null).show();
+        });
+    }
+    private void showMovies() {choose("FILM PEMBUKA",new String[]{"Lewati", "Putar bila tersedia"},v->saveOption(6,v==0?1:0));}
     private void showOpacity() {
-        final String[] labels={"Tipis", "Sedang", "Tebal"};
-        final int[] values={90,145,210};
-        new AlertDialog.Builder(this).setTitle("Transparansi tombol")
-            .setItems(labels,(dialog,which)->{
-                touchOverlay.setOpacity(values[which]);
-                getPreferences(MODE_PRIVATE).edit().putInt("touch_alpha",values[which]).apply();
-            }).show();
+        choose("TRANSPARANSI TOMBOL",new String[]{"Tipis", "Sedang", "Tebal"},which->{
+            final int[] values={90,145,210};touchOverlay.setOpacity(values[which]);
+            getPreferences(MODE_PRIVATE).edit().putInt("touch_alpha",values[which]).apply();
+        });
     }
+
 }

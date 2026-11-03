@@ -13,5 +13,15 @@ int main(void) {
     assert(p.left_x==99 && p.right_x==0 && p.right_y==255);
     android_touch_set(0,128,128,128,128,0);p=neutral();android_touch_merge(&p);
     assert(p.buttons==0 && p.left_x==128 && p.right_x==128);
-    puts("PASS: physical pad merge, analog, pressure, clamp and release");
+    const char *key, *value;
+    assert(android_touch_option(1,1,&key,&value) && !strcmp(key,"scale") && !strcmp(value,"1"));
+    assert(android_touch_option(1,2,&key,&value) && !strcmp(value,"2"));
+    assert(android_touch_option(1,3,&key,&value) && !strcmp(value,"window"));
+    assert(android_touch_option(3,0,&key,&value) && !strcmp(key,"DHD_ASPECT") && !strcmp(value,"stretch"));
+    assert(android_touch_option(3,1,&key,&value) && !strcmp(value,"wide"));
+    assert(android_touch_option(4,1,&key,&value) && !strcmp(key,"widescreen") && !strcmp(value,"1"));
+    assert(android_touch_option(5,1,&key,&value) && !strcmp(key,"DHD_PRESENT_FILTER") && !strcmp(value,"point"));
+    assert(!android_touch_option(3,3,&key,&value) && !android_touch_option(0,0,&key,&value));
+    assert(!android_touch_option(1,-1,&key,&value) && !android_touch_option(1,1,NULL,&value));
+    puts("PASS: physical pad merge, analog, pressure, clamp, release, settings whitelist");
 }

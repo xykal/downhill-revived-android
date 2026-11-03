@@ -159,10 +159,43 @@ static void hint(void)
     if (longest > 0) report_actual(session, longest);
 }
 
+static void android_perf_summary(void);
 /* gs_vsync (port/gs/present.c), on the game thread, once a field. */
 void android_perf_field(void)
 {
     static unsigned field;
     place(field++);
     hint();
+    android_perf_summary();
+}
+
+/* A small, bounded-rate diagnostic for phones without GPU timestamp queries. CPU times are
+   per-thread CPU milliseconds per field, not GPU times or proof of a bottleneck. */
+static void android_perf_summary(void)
+{
+    static int64_t start_ns, before[HOT];
+    static unsigned fields;
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts)) return;
+    int64_t now = (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+    if (!start_ns || now - start_ns > 20000000000LL) {
+        start_ns = now; fields = 0;
+        for (int i = 0; i < HOT; ++i)
+            before[i] = __atomic_load_n(&threads[i].set, __ATOMIC_ACQUIRE) ? cpu_ns(threads[i].clock) : 0;
+        return;
+    }
+    ++fields;
+    int64_t duration = now - start_ns;
+    if (duration < 5000000000LL || !fields) return;
+    double cpu[HOT] = {0};
+    for (int i = 0; i < HOT; ++i) {
+        if (__atomic_load_n(&threads[i].set, __ATOMIC_ACQUIRE)) {
+            int64_t after = cpu_ns(threads[i].clock);
+            if (before[i] && after >= before[i]) cpu[i] = (after - before[i]) / 1e6 / fields;
+            before[i] = after;
+        }
+    }
+    fprintf(stderr, "android-perf: fields/s=%.1f wall=%.1f ms/field cpu-ms/field game=%.1f vu=%.1f gs=%.1f native=%.1f (GPU time not measured)\n",
+            fields * 1e9 / duration, duration / 1e6 / fields, cpu[0], cpu[1], cpu[2], cpu[3]);
+    start_ns = now; fields = 0;
 }
