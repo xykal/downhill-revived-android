@@ -22,13 +22,14 @@ final class SettingsOverlayView extends FrameLayout {
         boolean save(int option,int value);
         boolean controlsVisible(); void controlsVisible(boolean show);
         int opacity(); void opacity(int value);
-        void close();
+        void close(); void restart();
     }
     private static final int BG=0xff101b25, CARD=0xff192b37, EDGE=0xff324856,
             TEXT=0xffeff7f7, MUTED=0xffa9bbc2, ACCENT=0xff68e0c5, WARN=0xffffc878;
     private final Bridge bridge;
     private final LinearLayout tabs, rows;
-    private final TextView message;
+    private final TextView message, restartButton, cancelRestart;
+    private boolean confirmingRestart;
     private int category=0;
     private final String[] categories={"LAYAR", "PERFORMA", "AUDIO", "KONTROL", "DIAGNOSTIK"};
     private final float dp;
@@ -41,6 +42,10 @@ final class SettingsOverlayView extends FrameLayout {
         int index(String code){
             if(code==null)return -1;
             if((id==11||id==13||id==14)&&code.isEmpty())code="0";
+            if(id==2||id==4||id==6||id==7||id==8){
+                if(code.equalsIgnoreCase("off") || code.equalsIgnoreCase("false") || code.equalsIgnoreCase("no"))code="0";
+                if(code.equalsIgnoreCase("on") || code.equalsIgnoreCase("true") || code.equalsIgnoreCase("yes"))code="1";
+            }
             for(int i=0;i<codes.length;i++)if(codes[i].equalsIgnoreCase(code))return i;
             return -1;
         }
@@ -70,9 +75,9 @@ final class SettingsOverlayView extends FrameLayout {
     };
     private static final Option[] AUDIO={
         new Option(8,"Mode saat game melambat","Stretch bisa bergema; tanpa stretch bisa terputus.",
-            new String[]{"1","0"},new String[]{"STRETCH","TANPA"},new int[]{1,0},false),
+            new String[]{"1","0"},new String[]{"STRETCH","TANPA"},new int[]{1,0},true),
         new Option(10,"Buffer suara","Lebih besar mungkin mengurangi putus, tetapi menambah jeda.",
-            new String[]{"70","120","200"},new String[]{"70 MS","120 MS","200 MS"},new int[]{0,1,2},false)
+            new String[]{"70","120","200"},new String[]{"70 MS","120 MS","200 MS"},new int[]{0,1,2},true)
     };
     private static final Option[] DIAGNOSTICS={
         new Option(11,"Profil waktu tunggu","Merekam spin dan park. Dapat memperlambat saat tes.",
@@ -89,11 +94,22 @@ final class SettingsOverlayView extends FrameLayout {
         panel.setBackground(shape(BG,EDGE,18));panel.setPadding(d(14),d(10),d(14),d(10));
         FrameLayout.LayoutParams panelParams=new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.MATCH_PARENT);
         panelParams.setMargins(d(24),d(12),d(24),d(12));addView(panel,panelParams);
+        message=text("Perubahan langsung ditandai; lainnya perlu mulai ulang game.",11,MUTED,false);
         LinearLayout head=new LinearLayout(context);head.setGravity(Gravity.CENTER_VERTICAL);panel.addView(head);
         LinearLayout brand=new LinearLayout(context);brand.setOrientation(LinearLayout.VERTICAL);
         head.addView(brand,new LinearLayout.LayoutParams(0,LayoutParams.WRAP_CONTENT,1));
         brand.addView(text("DOWNHILL / REVIVED",12,ACCENT,true));
         brand.addView(text("PENGATURAN",21,TEXT,true));
+        cancelRestart=button("BATAL",0xff2c404b,TEXT);
+        cancelRestart.setOnClickListener(v->{confirmingRestart=false;message.setText("Mulai ulang dibatalkan.");message.setTextColor(MUTED);render();});
+        head.addView(cancelRestart);
+        restartButton=button("MULAI ULANG",WARN,0xff302012);
+        LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT);
+        rp.setMargins(d(6),0,d(6),0);head.addView(restartButton,rp);
+        restartButton.setOnClickListener(v->{
+            if(confirmingRestart){bridge.restart();return;}
+            confirmingRestart=true;message.setText("Balapan yang belum disimpan bisa hilang. Tekan YA, ULANG untuk melanjutkan.");message.setTextColor(WARN);render();
+        });
         TextView close=button("TUTUP  ✕",0xff2c404b,TEXT);close.setContentDescription("Tutup pengaturan");
         close.setOnClickListener(v->bridge.close());head.addView(close);
         HorizontalScrollView scrollTabs=new HorizontalScrollView(context);scrollTabs.setHorizontalScrollBarEnabled(false);
@@ -103,7 +119,6 @@ final class SettingsOverlayView extends FrameLayout {
         ScrollView scroll=new ScrollView(context);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(true);
         panel.addView(scroll,new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT,0,1));
         rows=new LinearLayout(context);rows.setOrientation(LinearLayout.VERTICAL);scroll.addView(rows);
-        message=text("Perubahan langsung ditandai; lainnya perlu mulai ulang game.",11,MUTED,false);
         message.setPadding(d(4),d(7),d(4),0);panel.addView(message);
         render();requestFocus();
     }
@@ -119,7 +134,24 @@ final class SettingsOverlayView extends FrameLayout {
         TextView t=text(value,12,color,true);t.setGravity(Gravity.CENTER);t.setMinHeight(d(40));
         t.setPadding(d(14),d(7),d(14),d(7));t.setBackground(shape(fill,fill,10));t.setClickable(true);return t;
     }
+    private boolean differs(Option option){
+        String running=bridge.read(option.id,false),saved=bridge.read(option.id,true);
+        if(saved==null)saved=running;
+        int a=option.index(running),b=option.index(saved);
+        return !(a>=0 && b>=0 ? a==b : running!=null && running.equalsIgnoreCase(saved));
+    }
+    private boolean restartNeeded(){
+        if(!bridge.ready())return false;
+        for(Option[] group:new Option[][]{DISPLAY,PERFORMANCE,AUDIO,DIAGNOSTICS})
+            for(Option option:group)if(!option.live && differs(option))return true;
+        return false;
+    }
     private void render(){
+        boolean pending=restartNeeded();
+        if(!pending)confirmingRestart=false;
+        restartButton.setVisibility(pending?View.VISIBLE:View.GONE);
+        restartButton.setText(confirmingRestart?"YA, ULANG":"MULAI ULANG");
+        cancelRestart.setVisibility(confirmingRestart?View.VISIBLE:View.GONE);
         tabs.removeAllViews();rows.removeAllViews();
         for(int i=0;i<categories.length;i++){
             final int selected=i;boolean active=i==category;
@@ -152,7 +184,7 @@ final class SettingsOverlayView extends FrameLayout {
         int runIndex=option.index(running),saveIndex=option.index(saved);
         boolean same=runIndex>=0 && saveIndex>=0 ? runIndex==saveIndex : running!=null && running.equalsIgnoreCase(saved);
         String status=same?"TERBACA: "+option.label(running):
-            (option.live?"MENUNGGU GAME · TERBACA: ":"BUTUH RESTART · TERBACA: ")+option.label(running);
+            (option.live?(option.id==8 || option.id==10 ? "MENUNGGU AUDIO · TERBACA: " : "MENUNGGU GAME · TERBACA: "):"BUTUH RESTART · TERBACA: ")+option.label(running);
         LinearLayout card=row(option.title,option.detail,status,same?ACCENT:WARN);
         TextView change=button("‹  "+option.label(saved)+"  ›",0xff2c4650,TEXT);
         change.setContentDescription(option.title+", pilihan "+option.label(saved)+", ketuk untuk mengubah");
@@ -161,10 +193,18 @@ final class SettingsOverlayView extends FrameLayout {
             if(!bridge.save(option.id,option.values[next])){
                 message.setText("Gagal menyimpan: game belum siap atau pilihan dikunci lingkungan.");message.setTextColor(WARN);return;
             }
-            message.setText(option.live?"Tersimpan. Perubahan diproses oleh game.":"Tersimpan. Tutup paksa dan buka game untuk menerapkan.");
+            confirmingRestart=false;
+            message.setText(option.live?"Tersimpan. Perubahan sedang diterapkan.":"Tersimpan. Tekan MULAI ULANG jika siap menerapkan.");
             message.setTextColor(option.live?ACCENT:WARN);render();
-            if(option.live)postDelayed(()->{if(isAttachedToWindow())render();},700);
+            if(option.live)refreshLive(option,0);
         });card.addView(change);
+    }
+    private void refreshLive(Option option,int attempt){
+        postDelayed(()->{
+            if(!isAttachedToWindow())return;
+            boolean waiting=differs(option);render();
+            if(waiting && attempt<7)refreshLive(option,attempt+1);
+        },500);
     }
     private void addControls(){
         boolean show=bridge.controlsVisible();

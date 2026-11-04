@@ -37,6 +37,12 @@
 #include <SDL3/SDL.h>
 #include "host_api.h"
 #include "sound_ring_copy.h"
+#ifdef __ANDROID__
+#include "sound_live_options.h"
+static SoundLiveOptions sound_live=SOUND_LIVE_OPTIONS_INIT;
+void host_sound_request_option(int option,int value) { sound_live_request(&sound_live,option,value); }
+int host_sound_applied_option(int option) { return sound_live_running(&sound_live,option); }
+#endif
 #include "../hle/hle.h"
 
 #define SND_RATE HOST_SOUND_RATE
@@ -247,6 +253,10 @@ static void SDLCALL host_callback(void *unused, SDL_AudioStream *stream, int add
     unsigned request = (unsigned)total / 4, padding, level, queued, need, made = 0, target;
     unsigned device = DEVICE_MS * per_ms;
     (void)unused; (void)additional;
+#ifdef __ANDROID__
+    /* Never reconfigure SDL from the UI thread. The callback owns these two values. */
+    sound_live_apply(&sound_live,&out.stretch,&out.target,per_ms);
+#endif
     ring_end = ring_write;
     SDL_MemoryBarrierAcquire();
     /* what the device holds when SDL asks (up to a period) plus the stream: WASAPI's padding */

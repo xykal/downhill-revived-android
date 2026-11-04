@@ -48,6 +48,8 @@ jobs:
           cd "$HOME/simde" && git checkout -q 65c15e6
           ln -sfn "$HOME/simde" "$HOME/DevCaches/simde-src"
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
+      - name: JNI export-map regression before full build
+        run: python3 port/tools/test_android_jni_exports.py
       - name: Touch controls and multitouch regression
         run: |
           mkdir -p /tmp/dhd-touch-test
@@ -66,10 +68,17 @@ jobs:
           /tmp/test-gs
       - name: Audio stretch search regression
         run: |
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/sdl3.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+          tar xzf /tmp/sdl3.tar.gz -C /tmp
+          cc -std=gnu11 -O2 -ffunction-sections -fdata-sections -I/tmp/SDL3-3.4.18/include -Iport/include -Iport/hle -Iport/runtime \
+            port/host/test_sound_android_callback.c -Wl,--gc-sections -lm -o /tmp/test-sound-callback
+          /tmp/test-sound-callback
           cc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_wsola.c -lm -o /tmp/test-sound-wsola
           /tmp/test-sound-wsola
           cc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_ring_copy.c -o /tmp/test-sound-ring
           /tmp/test-sound-ring
+          cc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_live_options.c -o /tmp/test-sound-live
+          /tmp/test-sound-live
       - name: Android log size cap regression
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror port/hle/test_android_log_limit.c -o /tmp/test-android-log-limit
@@ -109,6 +118,11 @@ jobs:
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-wsola-armv7
           arm-linux-gnueabihf-gcc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_ring_copy.c -o /tmp/test-sound-ring-armv7
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-ring-armv7
+          arm-linux-gnueabihf-gcc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_live_options.c -o /tmp/test-sound-live-armv7
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-live-armv7
+          arm-linux-gnueabihf-gcc -std=gnu11 -O2 -ffunction-sections -fdata-sections -I/tmp/SDL3-3.4.18/include -Iport/include -Iport/hle -Iport/runtime \
+            port/host/test_sound_android_callback.c -Wl,--gc-sections -lm -o /tmp/test-sound-callback-armv7
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-callback-armv7
           # Exercise the real ARM mcontext registers and re-raised synchronous SIGSEGV.
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \
             port/hle/test_android_crash_log.c -ldl -o /tmp/test-crash-armv7

@@ -121,6 +121,8 @@ const char *android_touch_running_value(int option)
 extern int android_settings_ready(void);
 extern int host_setting_read(const char *,char *,size_t);
 extern int host_setting_locked(const char *);
+extern void host_sound_request_option(int,int);
+extern int host_sound_applied_option(int);
 JNIEXPORT void JNICALL Java_app_downhillrevived_DhdActivity_nativeTouchState(
     JNIEnv *env, jclass cls, jint buttons, jint lx, jint ly, jint rx, jint ry, jint active)
 {
@@ -135,6 +137,7 @@ JNIEXPORT jboolean JNICALL Java_app_downhillrevived_DhdActivity_nativeSaveOption
         !android_touch_option(option,value,&key,&setting) || host_setting_locked(option_env[option])) return JNI_FALSE;
     if (!host_setting_save(key,setting)) return JNI_FALSE;
     android_touch_queue_live(option,value);
+    if(option==8 || option==10) host_sound_request_option(option,value);
     return JNI_TRUE;
 }
 JNIEXPORT jboolean JNICALL Java_app_downhillrevived_DhdActivity_nativeSettingsLoaded(JNIEnv *env,jclass cls)
@@ -154,6 +157,8 @@ JNIEXPORT jstring JNICALL Java_app_downhillrevived_DhdActivity_nativeReadOption(
         value=buffer;
     } else {
         value=android_touch_running_value(option);
+        if(option==8) { int n=host_sound_applied_option(option); if(n>=0)value=n ? "1" : "0"; }
+        if(option==10) { int n=host_sound_applied_option(option); if(n==70)value="70"; else if(n==120)value="120"; else if(n==200)value="200"; }
     }
     return (*env)->NewStringUTF(env,value);
 }

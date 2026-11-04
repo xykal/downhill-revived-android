@@ -1,6 +1,7 @@
 // Downhill Revived on Android: SDL's surface with an optional PS2-style touch overlay.
 package app.downhillrevived;
 
+import android.content.Intent;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.util.Log;
@@ -58,6 +59,11 @@ public class DhdActivity extends SDLActivity {
                 getPreferences(MODE_PRIVATE).edit().putInt("touch_alpha",value).apply();
             }
             @Override public void close(){closeSettings();}
+            @Override public void restart(){
+                Intent restart=new Intent(DhdActivity.this,RestartActivity.class);
+                restart.putExtra(RestartActivity.OLD_PID,android.os.Process.myPid());
+                startActivity(restart);
+            }
         });
         mLayout.addView(settingsOverlay,new RelativeLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT));

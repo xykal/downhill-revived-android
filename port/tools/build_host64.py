@@ -110,7 +110,7 @@ WINDOWS_ONLY = ('port/gs/replay.c',)  # Win32 calls (GS replay)
 ANDROID_UNITS = ['port/host/android_main.c', 'port/host/android_perf.c', 'port/host/android_touch.c']
 # Android: only SDL's entry leaves the library; everything else may be garbage-collected
 # (--gc-sections), as /opt:ref does for dhd64.exe.
-ANDROID_EXPORTS = '{\n  global: SDL_main; Java_app_downhillrevived_DhdActivity_nativeTouchState; Java_app_downhillrevived_DhdActivity_nativeSaveOption;\n  local: *;\n};\n'
+ANDROID_EXPORTS = '{\n  global: SDL_main; Java_app_downhillrevived_DhdActivity_nativeTouchState; Java_app_downhillrevived_DhdActivity_nativeSaveOption; Java_app_downhillrevived_DhdActivity_nativeSettingsLoaded; Java_app_downhillrevived_DhdActivity_nativeReadOption;\n  local: *;\n};\n'
 
 
 def host_units(t):
