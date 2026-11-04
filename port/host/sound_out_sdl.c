@@ -36,6 +36,7 @@
 #include <string.h>
 #include <SDL3/SDL.h>
 #include "host_api.h"
+#include "sound_ring_copy.h"
 #include "../hle/hle.h"
 
 #define SND_RATE HOST_SOUND_RATE
@@ -67,14 +68,13 @@ static int trace_on(void)
    acquire in host_callback, so the device thread never sees the position before the samples). */
 static void ring_push(const int16_t *stereo, int samples)
 {
-    long w = ring_write, room = RING_SAMPLES - (w - ring_read), i;
+    long w = ring_write, room = RING_SAMPLES - (w - ring_read);
     long count = samples < room ? samples : room;
     if (count < samples)
         host_dropped += samples - count; /* host is behind: drop; game state already advanced */
-    for (i = 0; i < count; i++) {
-        ring[((w + i) % RING_SAMPLES) * 2] = stereo[i * 2];
-        ring[((w + i) % RING_SAMPLES) * 2 + 1] = stereo[i * 2 + 1];
-    }
+    /* Source is game-owned, not this ring. Copy in at most two contiguous blocks, preserving
+       the original publication barrier and the exact stereo samples, including wraparound. */
+    sound_ring_copy(ring,RING_SAMPLES,w,stereo,count);
     SDL_MemoryBarrierRelease();
     ring_write = w + count;
 }

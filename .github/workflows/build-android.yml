@@ -68,6 +68,8 @@ jobs:
         run: |
           cc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_wsola.c -lm -o /tmp/test-sound-wsola
           /tmp/test-sound-wsola
+          cc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_ring_copy.c -o /tmp/test-sound-ring
+          /tmp/test-sound-ring
       - name: Android log size cap regression
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror port/hle/test_android_log_limit.c -o /tmp/test-android-log-limit
@@ -105,6 +107,8 @@ jobs:
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-touch-armv7
           arm-linux-gnueabihf-gcc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_wsola.c -lm -o /tmp/test-sound-wsola-armv7
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-wsola-armv7
+          arm-linux-gnueabihf-gcc -std=c11 -O2 -Wall -Wextra -Werror port/host/test_sound_ring_copy.c -o /tmp/test-sound-ring-armv7
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-sound-ring-armv7
           # Exercise the real ARM mcontext registers and re-raised synchronous SIGSEGV.
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Wl,--build-id=sha1 \
             port/hle/test_android_crash_log.c -ldl -o /tmp/test-crash-armv7
@@ -260,6 +264,8 @@ jobs:
           nm="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
           "$nm" -D --defined-only build/android/lib/armeabi-v7a/libmain.so | grep 'Java_app_downhillrevived_DhdActivity_nativeTouchState'
           "$nm" -D --defined-only build/android/lib/armeabi-v7a/libmain.so | grep 'Java_app_downhillrevived_DhdActivity_nativeSaveOption'
+          "$nm" -D --defined-only build/android/lib/armeabi-v7a/libmain.so | grep 'Java_app_downhillrevived_DhdActivity_nativeSettingsLoaded'
+          "$nm" -D --defined-only build/android/lib/armeabi-v7a/libmain.so | grep 'Java_app_downhillrevived_DhdActivity_nativeReadOption'
       - name: Verify matching Android ELF build IDs
         if: env.DHD_ELF_URL != ''
         run: |

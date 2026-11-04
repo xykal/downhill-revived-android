@@ -1,6 +1,7 @@
 #include "android_touch.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 static HostPad neutral(void) { HostPad p; memset(&p,0,sizeof p); p.left_x=p.left_y=p.right_x=p.right_y=128; return p; }
 int main(void) {
@@ -37,5 +38,18 @@ int main(void) {
     android_touch_take_live(&counter,&shape,&filter); assert(counter==1 && shape==0 && filter==1);
     android_touch_take_live(&counter,&shape,&filter); assert(counter==-1 && shape==-1 && filter==-1);
     android_touch_queue_live(3,9); android_touch_take_live(&counter,&shape,&filter); assert(shape==-1);
-    puts("PASS: touch merge, settings whitelist and live-option queue");
+    assert(android_touch_running_value(9)==NULL);
+    setenv("DHD_FPS","60",1); setenv("DHD_ASPECT","16:9",1); setenv("DHD_PRESENT_FILTER","linear",1);
+    unsetenv("DHD_TIMELINE"); android_touch_settings_loaded();
+    assert(!strcmp(android_touch_running_value(9),"60"));
+    assert(!strcmp(android_touch_running_value(3),"16:9"));
+    assert(!strcmp(android_touch_running_value(11),"0"));
+    setenv("DHD_FPS","165",1); setenv("DHD_ASPECT","stretch",1); setenv("DHD_PRESENT_FILTER","point",1);
+    assert(!strcmp(android_touch_running_value(9),"60")); /* restart choice remains startup value */
+    assert(!strcmp(android_touch_running_value(3),"16:9")); /* not applied just by save */
+    android_touch_note_live();
+    assert(!strcmp(android_touch_running_value(3),"stretch") && !strcmp(android_touch_running_value(5),"point"));
+    assert(!strcmp(android_touch_running_value(9),"60"));
+    assert(android_touch_running_value(0)==NULL && android_touch_running_value(15)==NULL);
+    puts("PASS: touch, settings whitelist, startup snapshot and live-option queue");
 }

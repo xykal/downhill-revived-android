@@ -1081,8 +1081,23 @@ void host_settings_load(void)
         at += n + (at[n] == ',');
     }
     hle_log("settings:%s\n", *settings_seen ? settings_seen : " (none)");
+#ifdef __ANDROID__
+    { void android_touch_settings_loaded(void); android_touch_settings_loaded(); }
+#endif
 }
 
+#ifdef __ANDROID__
+static pthread_mutex_t android_settings_lock = PTHREAD_MUTEX_INITIALIZER;
+/* Reads and writes share the same lock so the UI sees a complete saved setting. */
+int host_setting_read(const char *key,char *out,size_t size)
+{
+    char path[HOST_PATH_MAX]; settings_path(path,sizeof path);
+    pthread_mutex_lock(&android_settings_lock);
+    int read=dhd_settings_read(path,key,out,size);
+    pthread_mutex_unlock(&android_settings_lock);
+    return read;
+}
+#endif
 /* One dhd.ini line (the others kept). Nonzero when saved. */
 int host_setting_save(const char *key, const char *value)
 {
@@ -1090,7 +1105,6 @@ int host_setting_save(const char *key, const char *value)
     settings_path(path, sizeof path);
 #ifdef __ANDROID__
     /* JNI settings and the game menu can save concurrently to the same .new file. */
-    static pthread_mutex_t android_settings_lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&android_settings_lock);
     int saved = dhd_settings_save(path, key, value);
     pthread_mutex_unlock(&android_settings_lock);

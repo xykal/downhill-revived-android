@@ -7,4 +7,7 @@ void android_touch_merge(HostPad *out);
 int android_touch_option(int option, int value, const char **key, const char **setting);
 void android_touch_queue_live(int option, int value);
 void android_touch_take_live(int *counter, int *shape, int *filter);
+void android_touch_settings_loaded(void);
+void android_touch_note_live(void);
+const char *android_touch_running_value(int option);
 #endif

@@ -398,6 +398,9 @@ void gs_present_options_apply(void)
 {
     gs_gpu_counter_apply();
     if (sdl_window && gs_gpu_native(&gs)) gs_native_present_options(&gs);
+#ifdef __ANDROID__
+    { void android_touch_note_live(void); android_touch_note_live(); }
+#endif
 }
 
 /* The picture to save: the native renderer's own (upscaled with DHD_SCALE, so its size), else

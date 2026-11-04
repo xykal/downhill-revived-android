@@ -1,5 +1,8 @@
 #include "android_touch.h"
 #include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #ifdef __ANDROID__
 #include <jni.h>
 #endif
@@ -74,8 +77,50 @@ void android_touch_take_live(int *counter,int *shape,int *filter)
     *shape=atomic_exchange_explicit(&live_shape,-1,memory_order_acq_rel);
     *filter=atomic_exchange_explicit(&live_filter,-1,memory_order_acq_rel);
 }
+/* Immutable startup environment captured on the game thread. The three live options are
+   atomic indices updated only after gs_present_options_apply has actually returned. */
+static const char *const option_env[15]={NULL,"DHD_SCALE","DHD_PERF_COUNTER","DHD_ASPECT","DHD_WIDESCREEN",
+    "DHD_PRESENT_FILTER","DHD_SKIP_MOVIES","DHD_VSYNC","DHD_SND_STRETCH","DHD_FPS","DHD_SND_LATENCY_MS",
+    "DHD_TIMELINE","DHD_SPIN_US","DHD_RSTAT","DHD_SND_HOST_TRACE"};
+static const char *const option_default[15]={NULL,"1","0","4:3","0","linear","0","0","1","60","70","0","3000","0","0"};
+static char startup[15][48];
+static atomic_int loaded=ATOMIC_VAR_INIT(0);
+static atomic_int active_counter=ATOMIC_VAR_INIT(-1), active_shape=ATOMIC_VAR_INIT(-1), active_filter=ATOMIC_VAR_INIT(-1);
+void android_touch_settings_loaded(void)
+{
+    for (int i=1;i<15;i++) {
+        const char *v=getenv(option_env[i]);
+        /* These three toggles use presence, not the value, as their switch. */
+        if (i==11 || i==13 || i==14) v=v ? "1" : "0";
+        snprintf(startup[i],sizeof startup[i],"%s",v && *v ? v : option_default[i]);
+    }
+    atomic_store_explicit(&loaded,1,memory_order_release);
+}
+void android_touch_note_live(void)
+{
+    const char *v=getenv("DHD_PERF_COUNTER");
+    atomic_store_explicit(&active_counter,v && atoi(v)!=0,memory_order_release);
+    v=getenv("DHD_ASPECT");
+    int shape=v && !strcmp(v,"stretch") ? 0 : v && !strcmp(v,"wide") ? 1 :
+              v && !strcmp(v,"4:3") ? 2 : v && !strcmp(v,"16:9") ? 3 : v && !strcmp(v,"pixels") ? 4 : -1;
+    atomic_store_explicit(&active_shape,shape,memory_order_release);
+    v=getenv("DHD_PRESENT_FILTER");
+    int filter=v && !strcmp(v,"point") ? 1 : 0;
+    atomic_store_explicit(&active_filter,filter,memory_order_release);
+}
+const char *android_touch_running_value(int option)
+{
+    if (!atomic_load_explicit(&loaded,memory_order_acquire) || option<1 || option>14) return NULL;
+    const char *value=startup[option];
+    if (option==2) {int n=atomic_load_explicit(&active_counter,memory_order_acquire);if(n>=0)value=n ? "1" : "0";}
+    if (option==3) {int n=atomic_load_explicit(&active_shape,memory_order_acquire);static const char *const s[]={"stretch","wide","4:3","16:9","pixels"};if(n>=0)value=s[n];}
+    if (option==5) {int n=atomic_load_explicit(&active_filter,memory_order_acquire);static const char *const s[]={"linear","point"};if(n>=0)value=s[n];}
+    return value;
+}
 #ifdef __ANDROID__
 extern int android_settings_ready(void);
+extern int host_setting_read(const char *,char *,size_t);
+extern int host_setting_locked(const char *);
 JNIEXPORT void JNICALL Java_app_downhillrevived_DhdActivity_nativeTouchState(
     JNIEnv *env, jclass cls, jint buttons, jint lx, jint ly, jint rx, jint ry, jint active)
 {
@@ -86,9 +131,30 @@ JNIEXPORT jboolean JNICALL Java_app_downhillrevived_DhdActivity_nativeSaveOption
 {
     (void)env;(void)cls;
     const char *key, *setting;
-    if (!android_settings_ready() || !android_touch_option(option,value,&key,&setting)) return JNI_FALSE;
+    if (!android_settings_ready() || !atomic_load_explicit(&loaded,memory_order_acquire) ||
+        !android_touch_option(option,value,&key,&setting) || host_setting_locked(option_env[option])) return JNI_FALSE;
     if (!host_setting_save(key,setting)) return JNI_FALSE;
     android_touch_queue_live(option,value);
     return JNI_TRUE;
+}
+JNIEXPORT jboolean JNICALL Java_app_downhillrevived_DhdActivity_nativeSettingsLoaded(JNIEnv *env,jclass cls)
+{
+    (void)env;(void)cls;
+    return atomic_load_explicit(&loaded,memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
+}
+JNIEXPORT jstring JNICALL Java_app_downhillrevived_DhdActivity_nativeReadOption(JNIEnv *env,jclass cls,jint option,jboolean saved)
+{
+    (void)cls;
+    const char *key,*ignore,*value;
+    char buffer[64];
+    if (!atomic_load_explicit(&loaded,memory_order_acquire) || option<1 || option>14 ||
+        !android_touch_option(option,option==1 ? 1 : 0,&key,&ignore)) return NULL;
+    if (saved) {
+        if (!host_setting_read(key,buffer,sizeof buffer)) return NULL;
+        value=buffer;
+    } else {
+        value=android_touch_running_value(option);
+    }
+    return (*env)->NewStringUTF(env,value);
 }
 #endif
