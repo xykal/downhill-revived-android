@@ -91,7 +91,7 @@ pub const SETTINGS: &[Setting] = &[
     // The picture's shape: widescreen's (wide), 4:3, 16:9, stretched or whole pixels.
     choice("DHD_ASPECT", "DHD_ASPECT", &[c("4:3", "4:3"), c("wide", "Wide"), c("16:9", "16:9"), c("stretch", "Stretch"),
                                          c("pixels", "Pixels")], "wide", "4:3"),
-    choice("DHD_PRESENT_FILTER", "DHD_PRESENT_FILTER", &[c("linear", "Smooth"), c("point", "Sharp")], "linear", "linear"),
+    choice("DHD_PRESENT_FILTER", "DHD_PRESENT_FILTER", &[c("linear", "Smooth"), c("point", "Sharp"), c("fxaa", "FXAA")], "linear", "linear"),
     Setting { other: "exact", ..choice("renderer", "DHD_RENDER", &[c("native", "Native"), c("exact", "Exact")], "native", "exact") },
     switch("skip_movies", "DHD_SKIP_MOVIES", SWITCH, "1", "0"),
     switch("vibration", "DHD_VIBRATION", SWITCH, "1", "1"),

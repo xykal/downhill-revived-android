@@ -14,7 +14,7 @@ static const SettingChoice setting_choices_window[] = {{"windowed", "Window"}, {
 static const SettingChoice setting_choices_size[] = {{"monitor", "Monitor size"}, {"896x672", "896x672"}, {"1280x960", "1280x960"}, {"1440x1080", "1440x1080"}, {"1280x720", "1280x720"}, {"1920x1080", "1920x1080"}, {"2560x1440", "2560x1440"}};
 static const SettingChoice setting_choices_widescreen[] = {{"0", "OFF"}, {"1", "ON"}};
 static const SettingChoice setting_choices_dhd_aspect[] = {{"4:3", "4:3"}, {"wide", "Wide"}, {"16:9", "16:9"}, {"stretch", "Stretch"}, {"pixels", "Pixels"}};
-static const SettingChoice setting_choices_dhd_present_filter[] = {{"linear", "Smooth"}, {"point", "Sharp"}};
+static const SettingChoice setting_choices_dhd_present_filter[] = {{"linear", "Smooth"}, {"point", "Sharp"}, {"fxaa", "FXAA"}};
 static const SettingChoice setting_choices_renderer[] = {{"native", "Native"}, {"exact", "Exact"}};
 static const SettingChoice setting_choices_skip_movies[] = {{"0", "OFF"}, {"1", "ON"}};
 static const SettingChoice setting_choices_vibration[] = {{"0", "OFF"}, {"1", "ON"}};
@@ -33,7 +33,7 @@ static const SettingInfo setting_table[] = {
     {"size", "", "896x672", setting_choices_size, 7},
     {"widescreen", "DHD_WIDESCREEN", "0", setting_choices_widescreen, 2},
     {"DHD_ASPECT", "DHD_ASPECT", "4:3", setting_choices_dhd_aspect, 5},
-    {"DHD_PRESENT_FILTER", "DHD_PRESENT_FILTER", "linear", setting_choices_dhd_present_filter, 2},
+    {"DHD_PRESENT_FILTER", "DHD_PRESENT_FILTER", "linear", setting_choices_dhd_present_filter, 3},
     {"renderer", "DHD_RENDER", "exact", setting_choices_renderer, 2},
     {"skip_movies", "DHD_SKIP_MOVIES", "0", setting_choices_skip_movies, 2},
     {"vibration", "DHD_VIBRATION", "1", setting_choices_vibration, 2},

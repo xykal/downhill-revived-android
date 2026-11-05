@@ -244,7 +244,9 @@ static int native_read_display(Native *n, uint32_t *pixels)
 static void native_present_options(Native *n)
 {
     const char *present_filter = getenv("DHD_PRESENT_FILTER");
-    dhdr_native_options(n->r, present_filter && !strcmp(present_filter, "point") ? DHDR_NATIVE_POINT_FILTER : 0);
+    unsigned flags = present_filter && !strcmp(present_filter, "point") ? DHDR_NATIVE_POINT_FILTER :
+                     present_filter && !strcmp(present_filter, "fxaa") ? DHDR_NATIVE_FXAA : 0;
+    dhdr_native_options(n->r, flags);
     native_aspect_options(n);
 }
 

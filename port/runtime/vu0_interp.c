@@ -30,7 +30,7 @@
    operations (under FPCR instead of MXCSR). */
 #define SIMDE_ENABLE_NATIVE_ALIASES
 #include <simde/x86/sse2.h>
-#include <arm_neon.h>
+#include "vu_neon_operand.h"
 /* Native NEON for the SSE idioms the VU1 kernels lean on (AND3, finding 091). The build's
    -ffp-model=strict makes clang split a vector float compare into four scalar compares (a
    constrained fcmp has no vector lowering on AArch64), so the float compares are the NEON
@@ -88,6 +88,7 @@ static inline __attribute__((always_inline)) __m128i vu_neon_cvttps_epi32(__m128
    (fcmeq's .4s encoding and vaddvq are ARMv8): the generic SSE code below, on SIMDe's NEON. */
 #define SIMDE_ENABLE_NATIVE_ALIASES
 #include <simde/x86/sse2.h>
+#include "vu_neon_operand.h"
 #else
 #include <xmmintrin.h>
 #include <emmintrin.h>
@@ -383,12 +384,10 @@ static inline float vu_daz(float x)
 #else
 static inline __attribute__((always_inline)) __m128 operand4(__m128 value)
 {
-#if defined(__aarch64__)
-    /* NEON can clamp the unsigned magnitude with UMIN and retain the sign. */
-    uint32x4_t bits = vreinterpretq_u32_f32(value);
-    const uint32x4_t sign = vdupq_n_u32(0x80000000u);
-    uint32x4_t magnitude = vbicq_u32(bits, sign);
-    value = vreinterpretq_f32_u32(vbslq_u32(sign, bits, vminq_u32(magnitude, vdupq_n_u32(0x7f7fffff))));
+#if defined(__aarch64__) || (defined(__arm__) && defined(__ARM_NEON))
+    /* NEON clamps unsigned magnitude with UMIN and retains the sign. ARMv7 now
+       takes the same exact bitwise path as ARM64, instead of the SSE emulation. */
+    value = vu_neon_operand(value);
     PS2_OPAQUE_M128(value);
     return value;
 #else

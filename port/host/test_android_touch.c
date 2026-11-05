@@ -22,6 +22,8 @@ int main(void) {
     assert(android_touch_option(3,1,&key,&value) && !strcmp(value,"wide"));
     assert(android_touch_option(4,1,&key,&value) && !strcmp(key,"widescreen") && !strcmp(value,"1"));
     assert(android_touch_option(5,1,&key,&value) && !strcmp(key,"DHD_PRESENT_FILTER") && !strcmp(value,"point"));
+    assert(android_touch_option(5,2,&key,&value) && !strcmp(value,"fxaa"));
+    assert(!android_touch_option(5,3,&key,&value));
     assert(!android_touch_option(3,3,&key,&value) && !android_touch_option(0,0,&key,&value));
     assert(!android_touch_option(1,-1,&key,&value) && !android_touch_option(1,1,NULL,&value));
     assert(android_touch_option(8,0,&key,&value) && !strcmp(key,"DHD_SND_STRETCH") && !strcmp(value,"0"));
@@ -50,6 +52,9 @@ int main(void) {
     android_touch_note_live();
     assert(!strcmp(android_touch_running_value(3),"stretch") && !strcmp(android_touch_running_value(5),"point"));
     assert(!strcmp(android_touch_running_value(9),"60"));
+    android_touch_queue_live(5,2); android_touch_take_live(&counter,&shape,&filter); assert(filter==2);
+    setenv("DHD_PRESENT_FILTER","fxaa",1); android_touch_note_live();
+    assert(!strcmp(android_touch_running_value(5),"fxaa"));
     assert(android_touch_running_value(0)==NULL && android_touch_running_value(15)==NULL);
     puts("PASS: touch, settings whitelist, startup snapshot and live-option queue");
 }

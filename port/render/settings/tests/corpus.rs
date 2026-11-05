@@ -244,3 +244,14 @@ fn android_diagnostic_toggles_do_not_leave_empty_environment_variables() {
         assert_eq!(ini.value("fps"), "60");
     }
 }
+
+#[test]
+fn fxaa_round_trip_preserves_android_iso_uri() {
+    let before = b"iso = content://com.android.providers.media.documents/document/example\nscale = 1\nDHD_PRESENT_FILTER = linear\n";
+    let after = saved(before, "DHD_PRESENT_FILTER", "fxaa");
+    let ini = Ini::parse(&after);
+    assert_eq!(ini.written("iso").as_deref(), Some("content://com.android.providers.media.documents/document/example"));
+    assert_eq!(ini.value("DHD_PRESENT_FILTER"), "fxaa");
+    let env: BTreeMap<_, _> = environment(Some(&ini), |_| false).vars.into_iter().collect();
+    assert_eq!(env["DHD_PRESENT_FILTER"], "fxaa");
+}

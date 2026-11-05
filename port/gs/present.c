@@ -887,7 +887,7 @@ void gs_vsync(void)
         android_touch_take_live(&counter,&shape,&filter);
         if (counter>=0) host_putenv_s("DHD_PERF_COUNTER",counter ? "1" : "0");
         if (shape>=0) { const char *const shapes[]={"stretch","wide","4:3"}; host_putenv_s("DHD_ASPECT",shapes[shape]); }
-        if (filter>=0) host_putenv_s("DHD_PRESENT_FILTER",filter ? "point" : "linear");
+        if (filter>=0) { const char *const filters[]={"linear","point","fxaa"}; host_putenv_s("DHD_PRESENT_FILTER",filters[filter]); }
         if (counter>=0 || shape>=0 || filter>=0) gs_present_options_apply();
     }
     { void android_perf_field(void); android_perf_field(); }  /* port/host/android_perf.c: CPU clocks */

@@ -120,6 +120,8 @@ pub struct Objects {
     present_rgba: wgpu::RenderPipeline,
     /// the same into BGRA8, made at the first present on a surface without RGBA8 (Apple's)
     present_bgra: std::sync::OnceLock<wgpu::RenderPipeline>,
+    present_fxaa_rgba: std::sync::OnceLock<wgpu::RenderPipeline>,
+    present_fxaa_bgra: std::sync::OnceLock<wgpu::RenderPipeline>,
     /// `native_grow_depth` (grow layout; depth only, writes Depth32Float with Always)
     pub grow_pipe: wgpu::RenderPipeline,
     /// `native_scanout` (scanout layout)
@@ -459,7 +461,11 @@ impl Objects {
 
     /// `present_pixel` into a target of `format`, the window surface's (`Surface::format`: RGBA8,
     /// else BGRA8); the BGRA8 one is made on its first use.
-    pub fn present_pipe(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> &wgpu::RenderPipeline {
+    pub fn present_pipe(&self, gpu: &Gpu, format: wgpu::TextureFormat, fxaa: bool) -> &wgpu::RenderPipeline {
+        if fxaa {
+            let slot = if format == wgpu::TextureFormat::Rgba8Unorm { &self.present_fxaa_rgba } else { &self.present_fxaa_bgra };
+            return slot.get_or_init(|| fullscreen_pipeline(gpu, &self.module, &self.draw_layout, "present_fxaa", Some(format)));
+        }
         if format == wgpu::TextureFormat::Rgba8Unorm {
             return &self.present_rgba;
         }
@@ -565,6 +571,8 @@ impl Objects {
             upload_pipe,
             present_rgba,
             present_bgra: std::sync::OnceLock::new(),
+            present_fxaa_rgba: std::sync::OnceLock::new(),
+            present_fxaa_bgra: std::sync::OnceLock::new(),
             grow_pipe,
             scanout_pipe,
             convert_pipe,

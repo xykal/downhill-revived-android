@@ -35,14 +35,14 @@ int android_touch_option(int option, int value, const char **key, const char **s
 {
     static const char *const booleans[]={"0","1"};
     static const char *const shapes[]={"stretch","wide","4:3"};
-    static const char *const filters[]={"linear","point"};
+    static const char *const filters[]={"linear","point","fxaa"};
     if (!key || !setting) return 0;
     switch (option) {
     case 1: if (value<1 || value>3) return 0; *key="scale"; *setting=value==1 ? "1" : value==2 ? "2" : "window"; return 1;
     case 2: if (value<0 || value>1) return 0; *key="perf_counter"; *setting=booleans[value]; return 1;
     case 3: if (value<0 || value>2) return 0; *key="DHD_ASPECT"; *setting=shapes[value]; return 1;
     case 4: if (value<0 || value>1) return 0; *key="widescreen"; *setting=booleans[value]; return 1;
-    case 5: if (value<0 || value>1) return 0; *key="DHD_PRESENT_FILTER"; *setting=filters[value]; return 1;
+    case 5: if (value<0 || value>2) return 0; *key="DHD_PRESENT_FILTER"; *setting=filters[value]; return 1;
     case 6: if (value<0 || value>1) return 0; *key="skip_movies"; *setting=booleans[value]; return 1;
     case 7: if (value<0 || value>1) return 0; *key="vsync"; *setting=booleans[value]; return 1;
     case 8: if (value<0 || value>1) return 0; *key="DHD_SND_STRETCH"; *setting=booleans[value]; return 1;
@@ -69,7 +69,7 @@ void android_touch_queue_live(int option, int value)
 {
     if (option==2 && value>=0 && value<=1) atomic_store_explicit(&live_counter,value,memory_order_release);
     if (option==3 && value>=0 && value<=2) atomic_store_explicit(&live_shape,value,memory_order_release);
-    if (option==5 && value>=0 && value<=1) atomic_store_explicit(&live_filter,value,memory_order_release);
+    if (option==5 && value>=0 && value<=2) atomic_store_explicit(&live_filter,value,memory_order_release);
 }
 void android_touch_take_live(int *counter,int *shape,int *filter)
 {
@@ -105,7 +105,7 @@ void android_touch_note_live(void)
               v && !strcmp(v,"4:3") ? 2 : v && !strcmp(v,"16:9") ? 3 : v && !strcmp(v,"pixels") ? 4 : -1;
     atomic_store_explicit(&active_shape,shape,memory_order_release);
     v=getenv("DHD_PRESENT_FILTER");
-    int filter=v && !strcmp(v,"point") ? 1 : 0;
+    int filter=v && !strcmp(v,"point") ? 1 : v && !strcmp(v,"fxaa") ? 2 : 0;
     atomic_store_explicit(&active_filter,filter,memory_order_release);
 }
 const char *android_touch_running_value(int option)
@@ -114,7 +114,7 @@ const char *android_touch_running_value(int option)
     const char *value=startup[option];
     if (option==2) {int n=atomic_load_explicit(&active_counter,memory_order_acquire);if(n>=0)value=n ? "1" : "0";}
     if (option==3) {int n=atomic_load_explicit(&active_shape,memory_order_acquire);static const char *const s[]={"stretch","wide","4:3","16:9","pixels"};if(n>=0)value=s[n];}
-    if (option==5) {int n=atomic_load_explicit(&active_filter,memory_order_acquire);static const char *const s[]={"linear","point"};if(n>=0)value=s[n];}
+    if (option==5) {int n=atomic_load_explicit(&active_filter,memory_order_acquire);static const char *const s[]={"linear","point","fxaa"};if(n>=0)value=s[n];}
     return value;
 }
 #ifdef __ANDROID__

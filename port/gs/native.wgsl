@@ -367,3 +367,31 @@ fn present_pixel(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f3
     let uv = (position.xy - present.rect.xy) / present.rect.zw;
     return vec4<f32>(textureSampleLevel(present_source, present_sampler, uv, 0.0).rgb, 1.0);
 }
+
+// Edge-directed screen-space anti-aliasing on the scanout, not MSAA or a resolution increase.
+// Only selected for DHD_PRESENT_FILTER=fxaa. At 1x it can soften detail and adds texture reads.
+@fragment
+fn present_fxaa(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+    let uv = (position.xy - present.rect.xy) / present.rect.zw;
+    let pixel = 1.0 / vec2<f32>(textureDimensions(present_source));
+    let nw = textureSampleLevel(present_source, present_sampler, uv + pixel * vec2<f32>(-1.0, -1.0), 0.0).rgb;
+    let ne = textureSampleLevel(present_source, present_sampler, uv + pixel * vec2<f32>( 1.0, -1.0), 0.0).rgb;
+    let sw = textureSampleLevel(present_source, present_sampler, uv + pixel * vec2<f32>(-1.0,  1.0), 0.0).rgb;
+    let se = textureSampleLevel(present_source, present_sampler, uv + pixel * vec2<f32>( 1.0,  1.0), 0.0).rgb;
+    let center = textureSampleLevel(present_source, present_sampler, uv, 0.0).rgb;
+    let luma = vec3<f32>(0.299, 0.587, 0.114);
+    let lnw = dot(nw, luma); let lne = dot(ne, luma);
+    let lsw = dot(sw, luma); let lse = dot(se, luma); let lm = dot(center, luma);
+    let lo = min(lm, min(min(lnw, lne), min(lsw, lse)));
+    let hi = max(lm, max(max(lnw, lne), max(lsw, lse)));
+    if (hi - lo < max(0.0312, hi * 0.125)) { return vec4<f32>(center, 1.0); }
+    var dir = vec2<f32>(-((lnw + lne) - (lsw + lse)), (lnw + lsw) - (lne + lse));
+    let reduce = max((lnw + lne + lsw + lse) * 0.03125, 0.0078125);
+    dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), vec2<f32>(-8.0), vec2<f32>(8.0)) * pixel;
+    let a = 0.5 * (textureSampleLevel(present_source, present_sampler, uv + dir * (-1.0 / 6.0), 0.0).rgb +
+                   textureSampleLevel(present_source, present_sampler, uv + dir * ( 1.0 / 6.0), 0.0).rgb);
+    let b = a * 0.5 + 0.25 * (textureSampleLevel(present_source, present_sampler, uv + dir * -0.5, 0.0).rgb +
+                                 textureSampleLevel(present_source, present_sampler, uv + dir *  0.5, 0.0).rgb);
+    let lb = dot(b, luma);
+    return vec4<f32>(select(b, a, lb < lo || lb > hi), 1.0);
+}

@@ -145,5 +145,5 @@ fn constants() {
     assert_eq!([DHDR_CMD_DRAW, DHDR_CMD_COPY, DHDR_CMD_IMPORT, DHDR_CMD_ALPHA_UPLOAD], [0, 1, 2, 3]);
     assert_eq!(DHDR_NO_INDEX, -1);
     assert_eq!(DHDR_NATIVE_SURFACES, 48);
-    assert_eq!([DHDR_NATIVE_DUAL, DHDR_NATIVE_POINT_FILTER], [1, 2]);
+    assert_eq!([DHDR_NATIVE_DUAL, DHDR_NATIVE_POINT_FILTER, DHDR_NATIVE_FXAA], [1, 2, 4]);
 }

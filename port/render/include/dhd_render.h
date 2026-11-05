@@ -244,8 +244,8 @@ typedef struct DhdrPresentRect {
     uint32_t window_w, window_h;     /* the client area; 0 x 0 = minimised: nothing is drawn */
     uint32_t resize, pad;            /* resize: reconfigure even when the size is unchanged */
 } DhdrPresentRect;
-enum { DHDR_NATIVE_DUAL = 1, DHDR_NATIVE_POINT_FILTER = 2 };   /* create: DUAL = may use dual-source
-                                                                  blending; options: POINT_FILTER */
+enum { DHDR_NATIVE_DUAL = 1, DHDR_NATIVE_POINT_FILTER = 2, DHDR_NATIVE_FXAA = 4 };   /* create: DUAL = may use dual-source
+                                                                  blending; options: POINT_FILTER or FXAA */
 DHDR_FN(dhdr_native_create)  DhdrNative *dhdr_native_create(uint32_t flags);   /* NULL on pipeline failure (logged) */
 DHDR_FN(dhdr_native_destroy) void dhdr_native_destroy(DhdrNative *n);           /* NULL is ignored */
 /* A decoded texture: w x h RGBA8 rows. NULL on failure (logged). */

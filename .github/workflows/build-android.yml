@@ -111,6 +111,9 @@ jobs:
             port/gs/memory.c port/gs/gs.c port/gs/display.c port/gs/test_gs.c port/host64/test_low.c \
             -lm -o /tmp/test-gs-armv7
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-gs-armv7
+          arm-linux-gnueabihf-gcc -std=gnu11 -O2 -Wall -Wextra -Werror -mfpu=neon -mfloat-abi=hard \
+            port/runtime/test_vu_neon_operand.c -o /tmp/test-vu-neon-operand
+          qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-vu-neon-operand
           arm-linux-gnueabihf-gcc -std=gnu11 -O2 -Wall -Wextra -Werror -Iport/runtime -Iport/include \
             port/host/android_touch.c port/host/test_android_touch.c -o /tmp/test-touch-armv7
           qemu-arm -L /usr/arm-linux-gnueabihf /tmp/test-touch-armv7

@@ -25,7 +25,7 @@
 //!
 //! Referee: `test_native_transfers.py --backend both --impl rust --presented` and
 //! `test_gs_wgpu.py --impl rust --arch x86_64 --only present` (N7).
-use crate::abi::{DhdrPresentRect, DHDR_NATIVE_POINT_FILTER};
+use crate::abi::{DhdrPresentRect, DHDR_NATIVE_POINT_FILTER, DHDR_NATIVE_FXAA};
 use crate::device::Gpu;
 use crate::native::pipelines::gputimes;
 use crate::native::scanout::Display;
@@ -62,6 +62,7 @@ pub struct Presenter {
     uniform: Option<Uniform>,
     /// The present filter's sampler (C's present_sampler).
     sampler: Option<wgpu::Sampler>,
+    fxaa: bool,
     /// The bind group of the display view it was made for (C's present_group): remade when the
     /// display texture is remade (a new size) or the sampler changes.
     group: Option<(wgpu::TextureView, wgpu::BindGroup)>,
@@ -69,7 +70,7 @@ pub struct Presenter {
 
 impl Presenter {
     pub fn new() -> Presenter {
-        Presenter { uniform: None, sampler: None, group: None }
+        Presenter { uniform: None, sampler: None, group: None, fxaa: false }
     }
 }
 
@@ -221,7 +222,7 @@ impl Native {
                 multiview_mask: None,
             });
             if let Some((x, y, sw, sh)) = scissor(r.cut, w, h) {
-                pass.set_pipeline(objects.present_pipe(gpu, surface.format()));
+                pass.set_pipeline(objects.present_pipe(gpu, surface.format(), p.fxaa));
                 pass.set_bind_group(0, &uniform.group, &[0]);
                 pass.set_bind_group(1, group, &[]);
                 pass.set_scissor_rect(x, y, sw, sh);
@@ -257,6 +258,7 @@ impl Native {
             p.uniform = Some(uniform(gpu, &self.objects.uniform_layout));
         }
         let filter = if flags & DHDR_NATIVE_POINT_FILTER != 0 { wgpu::FilterMode::Nearest } else { wgpu::FilterMode::Linear };
+        p.fxaa = flags & DHDR_NATIVE_FXAA != 0;
         p.sampler = Some(sampler(gpu, filter));
         p.group = None;
     }

@@ -133,6 +133,7 @@ pub const DHDR_NATIVE_SURFACES: u32 = 48;
 
 pub const DHDR_NATIVE_DUAL: u32 = 1;
 pub const DHDR_NATIVE_POINT_FILTER: u32 = 2;
+pub const DHDR_NATIVE_FXAA: u32 = 4;
 
 /// A picture vertex (native_core.inc's NativeVertex).
 #[repr(C)]

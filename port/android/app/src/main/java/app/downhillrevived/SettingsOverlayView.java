@@ -24,8 +24,9 @@ final class SettingsOverlayView extends FrameLayout {
         int opacity(); void opacity(int value);
         void close(); void restart();
     }
-    private static final int BG=0xff101b25, CARD=0xff192b37, EDGE=0xff324856,
-            TEXT=0xffeff7f7, MUTED=0xffa9bbc2, ACCENT=0xff68e0c5, WARN=0xffffc878;
+    private static final int BG=0xff121416, CARD=0xff1d2022, EDGE=0xff424343,
+            TEXT=0xfff7f3eb, MUTED=0xffb6b1a9, ACCENT=0xffff6b32, WARN=0xffffc36b,
+            BUTTON=0xff333536, DEEP=0xff161819;
     private final Bridge bridge;
     private final LinearLayout tabs, rows;
     private final TextView message, restartButton, cancelRestart;
@@ -58,8 +59,8 @@ final class SettingsOverlayView extends FrameLayout {
             new String[]{"1","0"},new String[]{"AKTIF","MATI"},new int[]{1,0},false),
         new Option(1,"Resolusi internal","2x lebih tajam namun lebih berat. Ini bukan anti-aliasing.",
             new String[]{"1","2","window"},new String[]{"1×","2×","LAYAR"},new int[]{1,2,3},false),
-        new Option(5,"Filter gambar","Halus mengurangi blok; tajam mempertahankan piksel.",
-            new String[]{"linear","point"},new String[]{"HALUS","TAJAM"},new int[]{0,1},true),
+        new Option(5,"Filter & anti-aliasing","FXAA menghaluskan tepi; bisa lebih berat dan agak lembut.",
+            new String[]{"linear","point","fxaa"},new String[]{"HALUS","TAJAM","FXAA"},new int[]{0,1,2},true),
         new Option(7,"V-Sync","Dapat mengurangi tearing; juga dapat menambah jeda.",
             new String[]{"0","1"},new String[]{"MATI","AKTIF"},new int[]{0,1},false)
     };
@@ -89,28 +90,28 @@ final class SettingsOverlayView extends FrameLayout {
     };
     SettingsOverlayView(Context context,Bridge bridge){
         super(context);this.bridge=bridge;dp=getResources().getDisplayMetrics().density;
-        setBackgroundColor(0xd90a1118);setClickable(true);setFocusable(true);setFocusableInTouchMode(true);
+        setBackgroundColor(0xe0090909);setClickable(true);setFocusable(true);setFocusableInTouchMode(true);
         LinearLayout panel=new LinearLayout(context);panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(shape(BG,EDGE,18));panel.setPadding(d(14),d(10),d(14),d(10));
+        panel.setBackground(shape(BG,EDGE,8));panel.setPadding(d(14),d(10),d(14),d(10));
         FrameLayout.LayoutParams panelParams=new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.MATCH_PARENT);
         panelParams.setMargins(d(24),d(12),d(24),d(12));addView(panel,panelParams);
         message=text("Perubahan langsung ditandai; lainnya perlu mulai ulang game.",11,MUTED,false);
         LinearLayout head=new LinearLayout(context);head.setGravity(Gravity.CENTER_VERTICAL);panel.addView(head);
         LinearLayout brand=new LinearLayout(context);brand.setOrientation(LinearLayout.VERTICAL);
         head.addView(brand,new LinearLayout.LayoutParams(0,LayoutParams.WRAP_CONTENT,1));
-        brand.addView(text("DOWNHILL / REVIVED",12,ACCENT,true));
+        brand.addView(text("DOWNHILL  /  REVIVED",12,ACCENT,true));
         brand.addView(text("PENGATURAN",21,TEXT,true));
-        cancelRestart=button("BATAL",0xff2c404b,TEXT);
+        cancelRestart=button("BATAL",BUTTON,TEXT);
         cancelRestart.setOnClickListener(v->{confirmingRestart=false;message.setText("Mulai ulang dibatalkan.");message.setTextColor(MUTED);render();});
         head.addView(cancelRestart);
-        restartButton=button("MULAI ULANG",WARN,0xff302012);
+        restartButton=button("MULAI ULANG",WARN,0xff26160d);
         LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT);
         rp.setMargins(d(6),0,d(6),0);head.addView(restartButton,rp);
         restartButton.setOnClickListener(v->{
             if(confirmingRestart){bridge.restart();return;}
             confirmingRestart=true;message.setText("Balapan yang belum disimpan bisa hilang. Tekan YA, ULANG untuk melanjutkan.");message.setTextColor(WARN);render();
         });
-        TextView close=button("TUTUP  ✕",0xff2c404b,TEXT);close.setContentDescription("Tutup pengaturan");
+        TextView close=button("TUTUP  ✕",BUTTON,TEXT);close.setContentDescription("Tutup pengaturan");
         close.setOnClickListener(v->bridge.close());head.addView(close);
         HorizontalScrollView scrollTabs=new HorizontalScrollView(context);scrollTabs.setHorizontalScrollBarEnabled(false);
         LinearLayout.LayoutParams tabWrap=new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.WRAP_CONTENT);
@@ -132,7 +133,7 @@ final class SettingsOverlayView extends FrameLayout {
     }
     private TextView button(String value,int fill,int color){
         TextView t=text(value,12,color,true);t.setGravity(Gravity.CENTER);t.setMinHeight(d(40));
-        t.setPadding(d(14),d(7),d(14),d(7));t.setBackground(shape(fill,fill,10));t.setClickable(true);return t;
+        t.setPadding(d(14),d(7),d(14),d(7));t.setBackground(shape(fill,fill,5));t.setClickable(true);return t;
     }
     private boolean differs(Option option){
         String running=bridge.read(option.id,false),saved=bridge.read(option.id,true);
@@ -155,7 +156,7 @@ final class SettingsOverlayView extends FrameLayout {
         tabs.removeAllViews();rows.removeAllViews();
         for(int i=0;i<categories.length;i++){
             final int selected=i;boolean active=i==category;
-            TextView tab=button(categories[i],active?ACCENT:0xff253743,active?0xff10272a:MUTED);
+            TextView tab=button(categories[i],active?ACCENT:BUTTON,active?0xff1d130e:TEXT);
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT);
             tp.setMargins(0,0,d(6),0);tabs.addView(tab,tp);tab.setOnClickListener(v->{category=selected;render();});
         }
@@ -169,7 +170,7 @@ final class SettingsOverlayView extends FrameLayout {
     }
     private LinearLayout row(String title,String detail,String status,int statusColor){
         LinearLayout card=new LinearLayout(getContext());card.setOrientation(LinearLayout.HORIZONTAL);card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(d(13),d(10),d(10),d(10));card.setBackground(shape(CARD,EDGE,12));
+        card.setPadding(d(13),d(10),d(10),d(10));card.setBackground(shape(CARD,EDGE,5));
         LinearLayout info=new LinearLayout(getContext());info.setOrientation(LinearLayout.VERTICAL);
         card.addView(info,new LinearLayout.LayoutParams(0,LayoutParams.WRAP_CONTENT,1));
         info.addView(text(title,15,TEXT,true));
@@ -186,18 +187,28 @@ final class SettingsOverlayView extends FrameLayout {
         String status=same?"TERBACA: "+option.label(running):
             (option.live?(option.id==8 || option.id==10 ? "MENUNGGU AUDIO · TERBACA: " : "MENUNGGU GAME · TERBACA: "):"BUTUH RESTART · TERBACA: ")+option.label(running);
         LinearLayout card=row(option.title,option.detail,status,same?ACCENT:WARN);
-        TextView change=button("‹  "+option.label(saved)+"  ›",0xff2c4650,TEXT);
-        change.setContentDescription(option.title+", pilihan "+option.label(saved)+", ketuk untuk mengubah");
-        final int next=saveIndex<0?0:(saveIndex+1)%option.values.length;
-        change.setOnClickListener(v->{
-            if(!bridge.save(option.id,option.values[next])){
-                message.setText("Gagal menyimpan: game belum siap atau pilihan dikunci lingkungan.");message.setTextColor(WARN);return;
-            }
-            confirmingRestart=false;
-            message.setText(option.live?"Tersimpan. Perubahan sedang diterapkan.":"Tersimpan. Tekan MULAI ULANG jika siap menerapkan.");
-            message.setTextColor(option.live?ACCENT:WARN);render();
-            if(option.live)refreshLive(option,0);
-        });card.addView(change);
+        // All choices are visible at once: the orange selection is saved, the status on
+        // the left states what is actually running. Do not confuse queued and active values.
+        LinearLayout choices=new LinearLayout(getContext());choices.setOrientation(LinearLayout.HORIZONTAL);
+        choices.setGravity(Gravity.CENTER_VERTICAL);
+        for(int i=0;i<option.values.length;i++){
+            final int choice=i; boolean selected=i==saveIndex;
+            TextView change=button(option.labels[i],selected?ACCENT:BUTTON,selected?DEEP:TEXT);
+            change.setTextSize(11);change.setPadding(d(8),d(7),d(8),d(7));
+            change.setContentDescription(option.title+", "+option.labels[i]+(selected?", dipilih":""));
+            LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,LayoutParams.WRAP_CONTENT);
+            cp.setMargins(d(4),0,0,0);choices.addView(change,cp);
+            change.setOnClickListener(v->{
+                if(!bridge.save(option.id,option.values[choice])){
+                    message.setText("Gagal menyimpan: game belum siap atau pilihan dikunci lingkungan.");message.setTextColor(WARN);return;
+                }
+                confirmingRestart=false;
+                message.setText(option.live?"Tersimpan. Perubahan sedang diterapkan.":"Tersimpan. Tekan MULAI ULANG jika siap menerapkan.");
+                message.setTextColor(option.live?ACCENT:WARN);render();
+                if(option.live)refreshLive(option,0);
+            });
+        }
+        card.addView(choices);
     }
     private void refreshLive(Option option,int attempt){
         postDelayed(()->{
@@ -209,11 +220,11 @@ final class SettingsOverlayView extends FrameLayout {
     private void addControls(){
         boolean show=bridge.controlsVisible();
         LinearLayout visible=row("Tombol sentuh","Tombol ⚙ tetap tersedia saat kontrol disembunyikan.","LANGSUNG",ACCENT);
-        TextView toggle=button(show?"TAMPIL":"SEMBUNYI",0xff2c4650,TEXT);
+        TextView toggle=button(show?"TAMPIL":"SEMBUNYI",BUTTON,TEXT);
         toggle.setOnClickListener(v->{bridge.controlsVisible(!show);render();});visible.addView(toggle);
         int a=bridge.opacity();int next=a<115?145:a<180?210:90;
         LinearLayout opacity=row("Transparansi","Atur ketebalan visual kontrol, tanpa mengubah tombol.","LANGSUNG",ACCENT);
-        TextView fade=button(a<115?"TIPIS":a<180?"SEDANG":"TEBAL",0xff2c4650,TEXT);
+        TextView fade=button(a<115?"TIPIS":a<180?"SEDANG":"TEBAL",BUTTON,TEXT);
         fade.setOnClickListener(v->{bridge.opacity(next);render();});opacity.addView(fade);
         LinearLayout help=row("Panduan singkat","X mengayuh · △ rem · R2 lompat · □ / ○ serang.","KONTROL GAME",MUTED);
         help.setContentDescription("Panduan tombol");
