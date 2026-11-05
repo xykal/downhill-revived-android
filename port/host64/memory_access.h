@@ -155,13 +155,30 @@ static inline __attribute__((always_inline)) int host64_base_ok(uint32_t base, u
     /* A hot template directly dereferences base+address. Prove every possible
        1..16 byte access is inside a mapped guest region; boundary accesses use
        the cold path, which checks their actual width. */
-    if (offset > UINT64_MAX-(uint64_t)base ||
-        !host64_split_span_ok((uint64_t)base+offset,16)) return 0;
-#endif
+    /* A valid span ends below 2 GiB. Prove this with unsigned 32-bit
+       comparisons before adding: on ARMv7 the former generic uint64_t span
+       check emitted many carry-chain instructions at every memory operation.
+       Checking the low segment first also handles the common RAM addresses.
+       Keep the original 16-byte bound even for narrower operations. */
+    if (!(offset <= DHD_SPLIT_LOW_END - 16 &&
+          base <= (uint32_t)(DHD_SPLIT_LOW_END - 16 - offset))) {
+        if (offset > DHD_SPLIT_HIGH_END - 16 ||
+            base > (uint32_t)(DHD_SPLIT_HIGH_END - 16 - offset) ||
+            base + (uint32_t)offset < DHD_SPLIT_HIGH_BEGIN) return 0;
+    }
+    if (offset >= HOST64_VIEWS_END) return 1;
+    /* After the guard the effective address and base are <= HIGH_END-16.
+       Every slow-window bit is below bit 32; a window >= 32 is therefore
+       fast. This avoids an ARM32 64-bit variable shift. */
+    uint32_t at = offset <= 0x2000000 - 16 ? base : base + (uint32_t)offset;
+    unsigned window = at >> 25;
+    return __builtin_expect(window >= 32 || !(((uint32_t)HOST64_SLOW_WINDOWS >> window) & 1), 1);
+#else
     if (offset >= HOST64_VIEWS_END)
         return 1;
     uint64_t at = offset + 16 <= 0x2000000 ? base : base + offset;
     return __builtin_expect(!((HOST64_SLOW_WINDOWS >> ((at >> 25) & 63)) & 1), 1);
+#endif
 }
 static inline __attribute__((always_inline)) uint8_t *
 host64_cold_address(uint8_t *base, uint64_t address, uint64_t size) {

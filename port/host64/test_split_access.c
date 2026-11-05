@@ -79,6 +79,58 @@ static void check_hot_path(void) {
         }
     }
 }
+/* Independent pre-optimization reference: includes the complete alias-window
+   decision, not just whether the 16-byte split segment is mapped. */
+static int reference_base_ok(uint32_t base,uint64_t offset) {
+    if (offset > UINT64_MAX - (uint64_t)base ||
+        !host64_split_span_ok((uint64_t)base + offset,16)) return 0;
+    if (offset >= HOST64_VIEWS_END) return 1;
+    uint64_t at = offset + 16 <= 0x2000000 ? base : (uint64_t)base + offset;
+    return !((HOST64_SLOW_WINDOWS >> ((at >> 25) & 63)) & 1);
+}
+static uint64_t random_state=0xd1467c5ab73f2901ull;
+static uint32_t random32(void) {
+    random_state ^= random_state << 13;
+    random_state ^= random_state >> 7;
+    random_state ^= random_state << 17;
+    return (uint32_t)random_state;
+}
+static void compare_base_ok(uint32_t base,uint64_t offset) {
+    int old=reference_base_ok(base,offset), now=host64_base_ok(base,offset);
+    if (old != now) {
+        fprintf(stderr,"guard mismatch: base=%08x offset=%llx old=%d new=%d\n",base,
+                (unsigned long long)offset,old,now);
+        assert(0);
+    }
+}
+static void check_guard_equivalence(void) {
+    const uint64_t edges[]={0,0x00400000,0x02000000,0x1fffffff,
+       0x20000000,0x28000000,0x30000000,0x38000000,0x39fffff0,
+       0x3a000000,0x6ffffff0,0x70000000,0x70e0fff0,0x70e10000,
+       0x80000000ull,0xffffffffull,0x100000000ull,UINT64_MAX};
+    for (unsigned i=0;i<sizeof edges/sizeof edges[0];i++)
+      for (int d=-32;d<=32;d++) {
+        uint64_t x=edges[i]+(uint64_t)d;
+        for (unsigned j=0;j<sizeof edges/sizeof edges[0];j++)
+          for (int e=-16;e<=16;e++) {
+            uint64_t y=edges[j]+(uint64_t)e;
+            if (x<=UINT32_MAX) compare_base_ok((uint32_t)x,y);
+            if (y<=UINT32_MAX) compare_base_ok((uint32_t)y,x);
+          }
+      }
+    for (unsigned i=0;i<5000000;i++) {
+        uint32_t b=random32(), r=random32();
+        uint64_t off;
+        switch (i%5) {
+          case 0: off=r; break;
+          case 1: off=((uint64_t)random32()<<32)|r; break;
+          case 2: off=r&0x01ffffff; break;
+          case 3: off=(uint64_t)(r&0xffff)+0x70000000; break;
+          default: off=(uint64_t)(r&31); break;
+        }
+        compare_base_ok(b,off);
+    }
+}
 static void check_copy(void) {
     /* The forbidden src/dst must trap before memcpy/memmove can touch a host
        mapping; zero-length operations don't touch either endpoint. */
@@ -94,7 +146,7 @@ static void check_copy(void) {
     }
 }
 int main(void) {
-    check_accesses(); check_hot_path(); check_copy();
+    check_accesses(); check_hot_path(); check_guard_equivalence(); check_copy();
     puts("PASS: split wasm address guards, fast/cold paths, boundaries, copy");
     return 0;
 }
