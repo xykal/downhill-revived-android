@@ -158,6 +158,8 @@ jobs:
             -c port/host/host_posix.c -o /tmp/host_posix.armv7.o
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: ARMv7 graphics strip and queued read regressions (QEMU, no gameplay)
+        run: bash port/tools/test_android_armv7_gs_candidates.sh
       - name: Prime cargo registry (rustgs builds --locked --offline)
         run: cd port/render && cargo fetch --locked
       - name: Settings corpus regression
@@ -224,6 +226,8 @@ jobs:
           echo "DHD_DEVCACHES=$HOME/DevCaches" >> "$GITHUB_ENV"
       - name: cmake, ninja
         run: pip install --user cmake ninja && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: ARMv7 graphics strip and queued read regressions (QEMU, no gameplay)
+        run: bash port/tools/test_android_armv7_gs_candidates.sh
       - name: Prime cargo registry (rustgs builds --locked --offline)
         run: cd port/render && cargo fetch --locked
       - name: Player dump — SCUS_971.77 from DHD_ELF_URL (BYOD)
